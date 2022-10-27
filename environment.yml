@@ -1,0 +1,23 @@
+name: plume
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - ipython
+  - matplotlib
+  - jupyter
+  - pip
+  - pandas
+  - scipy
+  - numpy
+  - python=3.9
+  - ffmpeg
+  - scikit-learn
+  - nb_conda
+  - scikit-image
+  - moviepy
+  - statsmodels
+  - jupyterthemes
+  - seaborn
+  - astropy
+prefix: /Users/julianarhee/miniforge3/envs/plume
