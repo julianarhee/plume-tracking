@@ -20,4 +20,6 @@ dependencies:
   - jupyterthemes
   - seaborn
   - astropy
+  - plotly
+  - rdp
 prefix: /Users/julianarhee/miniforge3/envs/plume
