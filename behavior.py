@@ -66,7 +66,7 @@ def parse_info_from_file(fpath, experiment=None,
     if condition is not None:
         condition = condition.lower()
 
-    return experiment, fly_id, condition
+    return experiment, date_str, fly_id, condition
 
 def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor'):
     '''
@@ -129,8 +129,9 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor'):
             int(datetime.strptime(s.split('-')[0], "%m/%d/%Y").strftime("%Y%m%d")))
 
     # get experiment info
-    exp, fly_id, cond = parse_info_from_file(fpath)
+    exp, datestr, fly_id, cond = parse_info_from_file(fpath)
     df0['experiment'] = exp
+    df0['trial'] = datestr.split('-')[-1]
     df0['fly_name'] = fly_id
     df0['condition'] = cond
     if verbose:
