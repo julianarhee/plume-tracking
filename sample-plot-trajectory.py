@@ -29,30 +29,24 @@ import behavior as butil
 
 util.set_sns_style(style='dark') # plotting settings i like for Nbs
 
-def plot_trajectory(experiment, fly, user_input=False, 
+def plot_trajectory(experiment, datestr, user_input=False, 
         odor_width=50, grid_sep=2000,
         rootdir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
 
     src_dir = os.path.join(rootdir, experiment)
     # Create an ID for figures (path to experiment dir)
-    fig_id = '{}: {}'.format(src_dir.split('/My Drive')[1], fly)
+    fig_id = '{}: {}'.format(src_dir.split(rootdir)[1], datestr)
 
     # Get a list of all the data files
-    if not user_input:
-        # try to find datafile(s) automatically by fly name (e.g.,'fly3')
-        try:
-            log_files = sorted([k for k in glob.glob(os.path.join(src_dir, '*{}*.log'.format(fly)))\
-                        if 'lossed tracking' not in k], key=util.natsort)
-            assert len(log_files)==1, "Unique datafile not found. Manually select file." 
-            fpath = log_files[0]
-        except Exception as e:
-            user_input=True
-            log_files = sorted([k for k in glob.glob(os.path.join(src_dir, \
-                            '*.log')) if 'lossed tracking' not in k], \
-                            key=util.natsort) 
+    log_files = sorted([k for k in glob.glob(os.path.join(src_dir, '*{}*.log'.format(datestr)))], key=util.natsort)
+    assert len(log_files)==1, "No unique file found..."
+    fpath = log_files[0]
 
     # List all files and have user select index of file to process
     if user_input:
+        log_files = sorted([k for k in glob.glob(os.path.join(src_dir, \
+                            '*.log')) if 'lossed tracking' not in k], \
+                            key=util.natsort) 
         print("Found {} tracking files.".format(len(log_files)))
         for i, fn in enumerate(log_files):
             print("{}: {}".format(i, os.path.split(fn)[-1]))
@@ -61,7 +55,7 @@ def plot_trajectory(experiment, fly, user_input=False,
         print("Selected: {}".format(fpath))
 
     # try to parse experiment details from the filename
-    exp, datestr, fid, cond = butil.parse_info_from_file(fpath)
+    exp, fid, cond = butil.parse_info_from_file(fpath)
     # load and process the csv data  
     df0 = butil.load_dataframe(fpath, mfc_id=None, verbose=False, cond=None)
     print('Experiment: {}{}Fly ID: {}{}Condition: {}'.format(exp, '\n', fid, '\n', cond))
@@ -109,15 +103,15 @@ def main():
         help='Base name for directories. Example: /Full/path/to/data/folder/Edge_Tracking/Data')
     parser.add_argument('-E', '--experiment', type=str, default='',
         help='experiment name Example: pam-activation')
-    parser.add_argument('-f', '--fly', default='', action='store',
-        help='fly id (ex: "fly9")')
+    parser.add_argument('-d', '--datestr', default='MMDDYYYY-HHmm', action='store',
+        help='MMDDYYYY-HHmm.log format')
 
     args = parser.parse_args()
     rootdir = args.rootdir
     experiment = args.experiment
-    fly = args.fly
+    datestr = args.datestr
     
-    plot_trajectory(experiment, fly)
+    plot_trajectory(experiment, datestr, rootdir=rootdir)
 
     
 #%%
