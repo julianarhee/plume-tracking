@@ -68,7 +68,8 @@ def parse_info_from_file(fpath, experiment=None,
 
     return experiment, date_str, fly_id, condition
 
-def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor'):
+def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
+                    parse_info=True):
     '''
     Read raw .log file from behavior and return formatted dataframe.
     Assumes MFC for odor is either 'mfc2_stpt' or 'mfc3_stpt'.
@@ -128,17 +129,17 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor'):
     df0['date'] = df0['timestamp'].apply(lambda s: \
             int(datetime.strptime(s.split('-')[0], "%m/%d/%Y").strftime("%Y%m%d")))
 
-    # get experiment info
-    exp, datestr, fly_id, cond = parse_info_from_file(fpath)
-    df0['experiment'] = exp
-    df0['trial'] = datestr.split('-')[-1]
-    df0['fly_name'] = fly_id
-    df0['condition'] = cond
-    if verbose:
-        print("Exp: {}, fly ID: {}, cond={}".format(exp, fly_id, cond))
+    if parse_info:
+        # get experiment info
+        exp, fly_id, cond = parse_info_from_file(fpath)
+        df0['experiment'] = exp
+        df0['fly_name'] = fly_id
+        df0['condition'] = cond
+        if verbose:
+            print("Exp: {}, fly ID: {}, cond={}".format(exp, fly_id, cond))
 
-    # make fly_id combo of date, fly_id since fly_id is reused across days
-    df0['fly_id'] = ['{}-{}'.format(dat, fid) for (dat, fid) in df0[['date', 'fly_name']].values]
+        # make fly_id combo of date, fly_id since fly_id is reused across days
+        df0['fly_id'] = ['{}-{}'.format(dat, fid) for (dat, fid) in df0[['date', 'fly_name']].values]
 
     return df0
 
@@ -634,7 +635,7 @@ def rdp_numpy(M, epsilon = 0):
     # same amount of points
     mask = np.empty(M.shape, dtype = bool)
 
-    # Assume all points are valid and falsify those which are found
+        # Assume all points are valid and falsify those which are found
     mask.fill(True)
 
     # The stack to select start and end index
