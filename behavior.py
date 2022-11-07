@@ -552,32 +552,50 @@ def check_odor_grid(df, odor_grid, odor_width=10, grid_sep=200, use_crossings=Tr
         # Identify true odor boundaries based on these estimated coords.
         for cnum, (curr_odor_xmin, curr_odor_xmax) in odor_grid.items():
             curr_grid_ix = int(cnum[1:])
-            traveled_xmin, traveled_xmax = get_boundary_from_crossings(df, curr_odor_xmin, curr_odor_xmax,
+            # check if there was any crossing..
+            crossed_edge = are_there_crossings(df, curr_odor_xmin, curr_odor_xmax)
+
+            # if crossings detected, find traveled max/min 
+            if crossed_edge:
+                traveled_xmin, traveled_xmax = get_boundary_from_crossings(df, 
+                                                curr_odor_xmin, curr_odor_xmax,
                                                 ix=curr_grid_ix, odor_width=odor_width, grid_sep=grid_sep, 
                                                 use_mean=use_mean)
-            if verbose:
-                print('{}: min {:.2f} vs {:.2f}'.format(cnum, curr_odor_xmin, traveled_xmin))
-                print('{}: max {:.2f} vs {:.2f}'.format(cnum, curr_odor_xmax, traveled_xmax))
-                print("True diff: {:.2f}".format(traveled_xmax - traveled_xmin))
-            ctr = curr_odor_xmin + (curr_odor_xmax - curr_odor_xmin)/2.
-            if traveled_xmax < ctr+odor_width*0.5: # animal never crosses to right side
+                if verbose:
+                    print('... {}: min {:.2f} vs {:.2f}'.format(cnum, curr_odor_xmin, traveled_xmin))
+                    print('... {}: max {:.2f} vs {:.2f}'.format(cnum, curr_odor_xmax, traveled_xmax))
+                    print("... True diff: {:.2f}".format(traveled_xmax - traveled_xmin))
+            else:
+                traveled_xmin = curr_odor_xmin
                 traveled_xmax = curr_odor_xmax
                 if verbose:
-                    print("setting travel xmax: {:.2f}".format(curr_odor_xmax))
-            if traveled_xmin > ctr-odor_width*0.5:
-                traveled_xmin = curr_odor_xmin # animal never goes to left side (?)
-                if verbose:
-                    print("setting travel xmin: {:.2f}".format(curr_odor_xmin))
+                    print("... this fly never crossed the edge")
+            ctr = curr_odor_xmin + (curr_odor_xmax - curr_odor_xmin)/2.
 
+            if (round(traveled_xmin, 2)==round(ctr, 2) or round(traveled_xmax, 2)==round(ctr, 2)) or not crossed_edge:
+                # at start of odor, animal doesnt move
+                print("... Using default odor min/max, animal did not move in odor")
+                traveled_xmin = curr_odor_xmin
+                traveled_xmax = curr_odor_xmax
+            else:
+                if traveled_xmax < ctr+odor_width*0.5: # animal never crosses right side
+                    traveled_xmax = curr_odor_xmax
+                    if verbose:
+                        print("... setting travel xmax: {:.2f}".format(curr_odor_xmax))
+                if traveled_xmin > ctr-odor_width*0.5:
+                    traveled_xmin = curr_odor_xmin # animal never crosses left side (?)
+                    if verbose:
+                        print("... setting travel xmin: {:.2f}".format(curr_odor_xmin))
+            # check width
             if abs(odor_width - (traveled_xmax - traveled_xmin)) < odor_width*0.25:
                 if verbose:
-                    print("{} updating".format(cnum))
+                    print("... {} updating: ({:.2f}, {:.2f})".format(cnum, traveled_xmin, traveled_xmax))
                 odor_grid.update({cnum: (traveled_xmin, traveled_xmax)})
             else:
                 bad_corridors.append(cnum)
                 if verbose:
-                    print("Difference was: {:.2f}".format(abs(odor_width - (traveled_xmax - traveled_xmin))))
-                    print("Skipping current boundary crossing")
+                    print("... Difference was: {:.2f}".format(abs(odor_width - (traveled_xmax - traveled_xmin))))
+                    print("... Skipping current boundary crossing")
 
         for b in bad_corridors:
             odor_grid.pop(b)
@@ -599,6 +617,16 @@ def check_odor_grid(df, odor_grid, odor_width=10, grid_sep=200, use_crossings=Tr
                
     return odor_grid
 
+def are_there_crossings(currdf, curr_odor_xmin, curr_odor_xmax):
+
+    always_under_max = currdf[currdf['instrip']]['ft_posx'].max() < curr_odor_xmax
+    always_above_min = currdf[currdf['instrip']]['ft_posx'].min() > curr_odor_xmin
+
+    if always_under_max and always_above_min:
+        return False
+    else: 
+        return True
+
 
 def get_boundary_from_crossings(df, curr_odor_xmin, curr_odor_xmax, ix=0,
                     grid_sep=200, odor_width=10, use_mean=True,
@@ -608,9 +636,11 @@ def get_boundary_from_crossings(df, curr_odor_xmin, curr_odor_xmax, ix=0,
                 & (df['ft_posx'] >= (curr_odor_xmax-odor_width*.5))].loc[ix:].copy()
     left_xings = df[(df['ft_posx'] <= (curr_odor_xmin+odor_width*.5)) \
                 & (df['ft_posx'] >= (curr_odor_xmin-odor_width*.5))].loc[ix:].copy()
+
     # get in/out bouts
     right_xings = parse_bouts(right_xings, count_varname='instrip')
     left_xings = parse_bouts(left_xings, count_varname='instrip')
+
     # get index of each bout's 1st entry, make sure to start from outstrip
     # ... left side
     first_in_ixs_left=[]
@@ -634,6 +664,7 @@ def get_boundary_from_crossings(df, curr_odor_xmin, curr_odor_xmax, ix=0,
             continue
         in_ix = bdf.iloc[0].name
         first_in_ixs_right.extend([in_ix-1, in_ix])
+
     # select xmin/xmax based on actual travel positions
     if len(first_in_ixs_right)>0 and len(first_in_ixs_left)==0: # animal always on larger edge
         traveled_xmax = df.loc[first_in_ixs_right]['ft_posx'].mean() \
