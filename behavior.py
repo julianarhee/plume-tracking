@@ -22,6 +22,8 @@ import rdp
 
 # plotting
 import plotly.express as px
+import pylab as pl
+import seaborn as sns
 
 # ----------------------------------------------------------------------
 # Data loading
@@ -554,7 +556,7 @@ def check_odor_grid(df, odor_grid, odor_width=10, grid_sep=200, use_crossings=Tr
             curr_grid_ix = int(cnum[1:])
             # check if there was any crossing..
             crossed_edge = are_there_crossings(df, curr_odor_xmin, curr_odor_xmax)
-
+            print("Crossings? {}".format(crossed_edge))
             # if crossings detected, find traveled max/min 
             if crossed_edge:
                 traveled_xmin, traveled_xmax = get_boundary_from_crossings(df, 
@@ -572,7 +574,7 @@ def check_odor_grid(df, odor_grid, odor_width=10, grid_sep=200, use_crossings=Tr
                     print("... this fly never crossed the edge")
             ctr = curr_odor_xmin + (curr_odor_xmax - curr_odor_xmin)/2.
 
-            if (round(traveled_xmin, 2)==round(ctr, 2) or round(traveled_xmax, 2)==round(ctr, 2)) or not crossed_edge:
+            if not crossed_edge:
                 # at start of odor, animal doesnt move
                 print("... Using default odor min/max, animal did not move in odor")
                 traveled_xmin = curr_odor_xmin
@@ -619,8 +621,9 @@ def check_odor_grid(df, odor_grid, odor_width=10, grid_sep=200, use_crossings=Tr
 
 def are_there_crossings(currdf, curr_odor_xmin, curr_odor_xmax):
 
-    always_under_max = currdf[currdf['instrip']]['ft_posx'].max() < curr_odor_xmax
-    always_above_min = currdf[currdf['instrip']]['ft_posx'].min() > curr_odor_xmin
+    start_ix = currdf[currdf['instrip']].iloc[0].name
+    always_under_max = currdf.loc[start_ix:]['ft_posx'].max() < curr_odor_xmax
+    always_above_min = currdf.loc[start_ix:]['ft_posx'].min() > curr_odor_xmin
 
     if always_under_max and always_above_min:
         return False
@@ -766,6 +769,75 @@ def add_rdp_by_bout(df_, epsilon=0.1):
 # ----------------------------------------------------------------------
 # Visualization
 # ----------------------------------------------------------------------
+
+def plot_trajectory_from_file(fpath, parse_info=False,
+            odor_width=10, grid_sep=200, ax=None):
+    # load and process the csv data  
+    df0 = load_dataframe(fpath, mfc_id=None, verbose=False, cond=None, 
+                parse_info=False)
+    fly_id=None
+    if parse_info:
+        # try to parse experiment details from the filename
+        exp, datestr, fid, cond = parse_info_from_file(fpath)
+        print('Experiment: {}{}Fly ID: {}{}Condition: {}'.format(exp, '\n', fid, '\n', cond))
+        fly_id = df0['fly_id'].unique()[0]
+
+    # get experimentally determined odor boundaries:
+    ogrid = get_odor_grid(df0, odor_width=odor_width, grid_sep=grid_sep,
+                            use_crossings=True, verbose=False )
+    #(odor_xmin, odor_xmax), = ogrid.values()
+    odor_bounds = list(ogrid.values())
+
+    title = os.path.splitext(os.path.split(fpath)[-1])[0]
+    print(odor_bounds) 
+    plot_trajectory(df0, odor_bounds=odor_bounds, title=title, ax=ax)
+
+    return ax
+
+def plot_trajectory(df0, odor_bounds=[], ax=None,
+        hue_varname='instrip', palette={True: 'r', False: 'w'},
+        start_at_odor = True, odor_lc='lightgray', odor_lw=0.5, title=''):
+    # ---------------------------------------------------------------------
+    if ax is None: 
+        fig, ax = pl.subplots()
+    sns.scatterplot(data=df0, x="ft_posx", y="ft_posy", ax=ax, 
+                    hue=hue_varname, s=0.5, edgecolor='none', palette=palette)
+    for (odor_xmin, odor_xmax) in odor_bounds:
+        plot_odor_corridor(ax, odor_xmin=odor_xmin, odor_xmax=odor_xmax)
+
+    odor_start_ix = df0[df0['instrip']].iloc[0]['ft_posy']
+    ax.axhline(y=odor_start_ix, color='w', lw=0.5, linestyle=':')
+    ax.legend(bbox_to_anchor=(1,1), loc='upper left', title=hue_varname)
+    ax.set_title(title)
+    # Center corridor
+    xmax = np.ceil(df0['ft_posx'].abs().max())
+    ax.set_xlim([-xmax-10, xmax+10])
+    pl.subplots_adjust(left=0.2, right=0.8)
+
+    return ax
+
+def plot_odor_corridor(ax, odor_xmin=-100, odor_xmax=100, \
+                    odor_linecolor='gray', odor_linewidth=0.5,
+                    offset=10):
+    ax.axvline(odor_xmin, color=odor_linecolor, lw=odor_linewidth)
+    ax.axvline(odor_xmax, color=odor_linecolor, lw=odor_linewidth)
+    xmin = min([odor_xmin-offset, min(ax.get_xlim())])
+    xmax = max([odor_xmax + offset, min(ax.get_xlim())])
+    ax.set_xlim([xmin, xmax])
+    #ax.axhline(odor_start_posy, color=startpos_linecolor, 
+    #            lw=startpos_linewidth, linestyle=':')
+
+
+def plot_45deg_corridor(ax, odor_lc='gray', odor_lw=0.5):
+    ax.plot([-25, 975], [0,1000], color=odor_lc, lw=odor_lw)
+    ax.plot([25, 1025], [0,1000], color=odor_lc, lw=odor_lw)
+
+def center_odor_path(ax, xmin=-500, xmax=500, ymin=-100, ymax=1000):
+    ax.set_xlim((xmin, xmax))
+    ax.set_ylim((ymin, ymax))
+
+# interactive plotting 
+
 def iplot_odor_corridor(fig, odor_xmin=-100, odor_xmax=100, \
                             odor_linecolor='gray', odor_linewidth=0.5,
                             odor_start_posy=0, startpos_linecolor='gray', 
@@ -779,33 +851,12 @@ def iplot_odor_corridor(fig, odor_xmin=-100, odor_xmax=100, \
 
     return fig
 
-def plot_odor_corridor(ax, odor_xmin=-100, odor_xmax=100, \
-                            odor_linecolor='gray', odor_linewidth=0.5,\
-                            odor_start_posy=0, startpos_linecolor='gray',
-                            startpos_linewidth=0.5):
-    ax.axvline(odor_xmin, color=odor_linecolor, lw=odor_linewidth)
-    ax.axvline(odor_xmax, color=odor_linecolor, lw=odor_linewidth)
-    ax.axhline(odor_start_posy, color=startpos_linecolor, 
-                lw=startpos_linewidth, linestyle=':')
-
-
-def plot_45deg_corridor(ax, odor_lc='gray', odor_lw=0.5):
-    ax.plot([-25, 975], [0,1000], color=odor_lc, lw=odor_lw)
-    ax.plot([25, 1025], [0,1000], color=odor_lc, lw=odor_lw)
-
-
-
 def icenter_odor_path(fig, xmin=-500, xmax=500, ymin=-100, ymax=1000):
     # Set data range
     fig.update_layout(yaxis=dict(range=[ymin, ymax], scaleratio=1))
     fig.update_layout(xaxis=dict(range=[xmin, xmax], scaleratio=1))
 
     return fig
-
-def center_odor_path(ax, xmin=-500, xmax=500, ymin=-100, ymax=1000):
-    ax.set_xlim((xmin, xmax))
-    ax.set_ylim((ymin, ymax))
-
 
 def iplot_trajectory(df0, xvar='ft_posx', yvar='ft_posy', plot_odor=True,\
                         xmin=-500, xmax=500, ymin=-100, ymax=1000,
@@ -843,6 +894,7 @@ def iplot_trajectory(df0, xvar='ft_posx', yvar='ft_posy', plot_odor=True,\
     fig.update_yaxes(showgrid=False)
 
     return fig
+
 
 def get_quiverplot_inputs(df_, xvar='ft_posx', yvar='ft_posy'):
 
