@@ -29,50 +29,6 @@ import behavior as butil
 
 util.set_sns_style(style='dark') # plotting settings i like for Nbs
 
-def plot_trajectory_from_file(fpath, parse_info=False,
-            odor_width=10, grid_sep=200):
-    # load and process the csv data  
-    df0 = butil.load_dataframe(fpath, mfc_id=None, verbose=False, cond=None, 
-                parse_info=False)
-    fly_id=None
-    if parse_info:
-        # try to parse experiment details from the filename
-        exp, fid, cond = butil.parse_info_from_file(fpath)
-        print('Experiment: {}{}Fly ID: {}{}Condition: {}'.format(exp, '\n', fid, '\n', cond))
-        fly_id = df0['fly_id'].unique()[0]
-
-    # get experimentally determined odor boundaries:
-    ogrid = butil.get_odor_grid(df0, odor_width=odor_width, grid_sep=grid_sep,
-                                use_crossings=True, verbose=False, )
-    #(odor_xmin, odor_xmax), = ogrid.values()
-    odor_bounds = list(ogrid.values())
-
-    # Set some plotting params 
-    hue_varname='instrip'
-    palette={True: 'r', False: 'w'}
-    start_at_odor = True
-    odor_width=50
-    odor_lc='lightgray'
-    odor_lw=0.5
-    # ---------------------------------------------------------------------
-    fig, ax = pl.subplots()
-    sns.scatterplot(data=df0, x="ft_posx", y="ft_posy", ax=ax, 
-                    hue=hue_varname, s=0.5, edgecolor='none', palette=palette)
-    for (odor_xmin, odor_xmax) in odor_bounds:
-        butil.plot_odor_corridor(ax, odor_xmin=odor_xmin, odor_xmax=odor_xmax)
-
-    ax.legend(bbox_to_anchor=(1,1), loc='upper left', title=hue_varname)
-    fname = os.path.splitext(os.path.split(fpath)[-1])[0]
-
-    ax.set_title(fname)
-    pl.subplots_adjust(left=0.2, right=0.8)
-
-    # Center corridor
-    xmax = np.ceil(df0['ft_posx'].abs().max())
-    ax.set_xlim([-xmax-10, xmax+10])
-
-    return fig
-
 def select_logfile(experiment, datestr, user_input=False, 
         rootdir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
 
@@ -127,8 +83,9 @@ def main():
     parse_info = False
 
     fpath = select_logfile(experiment, datestr, user_input=user_input, rootdir=rootdir)
-    fig = plot_trajectory_from_file(fpath, parse_info=parse_info, 
-                odor_width=odor_width, grid_sep=grid_sep)
+    fig, ax = pl.subplots()
+    butil.plot_trajectory_from_file(fpath, parse_info=parse_info, 
+                odor_width=odor_width, grid_sep=grid_sep, ax=ax)
 
     # label figure and save
     fig_id = '{}: {}'.format(experiment, datestr)
