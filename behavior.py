@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#504!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 '''
 File           : behavior.py
@@ -131,15 +131,18 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
 
     if parse_info:
         # get experiment info
-        exp, fly_id, cond = parse_info_from_file(fpath)
+        exp, datestr, fly_id, cond = parse_info_from_file(fpath)
         df0['experiment'] = exp
         df0['fly_name'] = fly_id
         df0['condition'] = cond
+        df0['trial'] = datestr
         if verbose:
             print("Exp: {}, fly ID: {}, cond={}".format(exp, fly_id, cond))
 
         # make fly_id combo of date, fly_id since fly_id is reused across days
         df0['fly_id'] = ['{}-{}'.format(dat, fid) for (dat, fid) in df0[['date', 'fly_name']].values]
+        df0['trial_id'] = ['{}_{}'.format(fly_id, trial) for (fly_id, trial) in \
+                  df0[['fly_id', 'trial']].values]
 
     return df0
 
@@ -158,17 +161,44 @@ def load_dataframe_resampled_csv(fpath):
 
     return df0
 
+def check_entry_left(df, entry_ix=0):
+    '''
+    Check whether fly enters from left/right of corridor based on prev tsteps.
 
-def get_odor_params(df0, odor_width=50, check_odor=False):
+    Arguments:
+        df (pd.DataFrame) : dataframe with true indices
+        entry_ix (int) : index of entry point
+
+    Returns:
+        entry_left (bool) : entered left True, otherwise False
+    '''
+
+    cumsum = df.loc[entry_ix-20:entry_ix]['ft_posx'].diff().cumsum().iloc[-1]
+    if cumsum > 0: # entry is from left of strip (values get larger)
+        entry_left=True
+    elif cumsum < 0:
+        entry_left=False
+    else:
+        entry_left=None
+
+    return entry_left
+    
+
+def get_odor_params(df, odor_width=50, entry_ix=None, is_grid=False, check_odor=False, 
+                    mfc_var='mfc2_stpt'):
     '''
     Get odor start times, boundary coords, etc.
 
     Arguments:
-        df0 -- formatted dataframe (from load_dataframe())
-
+        df (pd.DataFrame) : full dataframe (from load_dataframe())
+        
     Keyword Arguments:
-        odor_width -- width of odor corridor in mm (default: {50})
-
+        odor_width (float) :  Width of odor corridor in mm (default: {50})
+        entry_ix (int) : index of 1st entry (can be 1st entry of Nth corridor if is_grid)
+        is_grid (bool) : 
+            Is grid of odor strips (odor start is at odor edge if not 1st odor encounter)
+        check_odor (bool) :
+            Check if time of first instrip is also time of first mfc_on. Is redundant. 
     Returns:
         dict of odor params:
         {'trial_start_time': float
@@ -176,24 +206,38 @@ def get_odor_params(df0, odor_width=50, check_odor=False):
          'odor_boundary': (float, float) # x boundaries of odor corridor
          'odor_start_pos': (float, float) # animal's position at odor onset
     '''
-    odor_xmin = df0[df0['instrip']].iloc[0]['ft_posx'] - (odor_width/2.)
-    odor_xmax = df0[df0['instrip']].iloc[0]['ft_posx'] + (odor_width/2.)
+    if entry_ix is None:
+        entry_ix = df[df['instrip']].iloc[0].name
+    entry_left = check_entry_left(df, entry_ix=entry_ix)
+    
+    currdf = df.loc[entry_ix:].copy()
+    if is_grid and entry_left is not None: # entry_left must be true or false
+        if entry_left:
+            odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] 
+            odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] + odor_width
+        else: # entered right, so entry point is largest val
+            odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] - odor_width
+            odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] 
+    else:
+        odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] - (odor_width/2.)
+        odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] + (odor_width/2.)
 
-    trial_start_time = df0.iloc[0]['time']
-    odor_start_time = df0[df0['instrip']].iloc[0]['time']
+    trial_start_time = currdf.iloc[0]['time']
+    odor_start_time = currdf[currdf['instrip']].iloc[0]['time']
 
-    odor_start_posx = df0[df0['instrip']].iloc[0]['ft_posx']
-    odor_start_posy = df0[df0['instrip']].iloc[0]['ft_posy']
+    odor_start_posx = currdf[currdf['instrip']].iloc[0]['ft_posx']
+    odor_start_posy = currdf[currdf['instrip']].iloc[0]['ft_posy']
 
     if check_odor:
-        assert odor_start_time == df0.iloc[df0['mfc2_stpt'].argmax()]['time'],\
+        assert odor_start_time == currdf.iloc[df[mfc_var].argmax()]['time'],\
             "ERR: odor start time does not match MFC switch time!"
 
     odor_params = {
                     'trial_start_time': trial_start_time,
                     'odor_start_time': odor_start_time,
                     'odor_boundary': (odor_xmin, odor_xmax),
-                    'odor_start_pos': (odor_start_posx, odor_start_posy)
+                    'odor_start_pos': (odor_start_posx, odor_start_posy),
+                    'entry_left': entry_left
                     } 
 
     return odor_params
@@ -460,9 +504,10 @@ def find_odor_grid(df, odor_width=10, grid_sep=200): #use_crossings=True,
     # loop through the remainder of odor strips in experiment until all strips found
     while nextgrid_df.shape[0] > 0:
         # get odor params of next corridor
-        next_odorp = get_odor_params(nextgrid_df, odor_width=odor_width)
-        # update odor param dict
         last_ix = nextgrid_df[nextgrid_df['instrip']].iloc[0].name
+        next_odorp = get_odor_params(df, odor_width=odor_width, 
+                            entry_ix=last_ix, is_grid=True)
+        # update odor param dict
         odor_grid.update({'c{}'.format(last_ix): (next_odorp['odor_boundary'])})
         curr_odor_xmin, curr_odor_xmax = next_odorp['odor_boundary']
         # look for another odor corridor (outside of current odor boundary, but instrip)

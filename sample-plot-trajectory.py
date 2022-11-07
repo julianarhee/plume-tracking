@@ -37,7 +37,6 @@ def plot_trajectory(experiment, datestr, parse_info=False, user_input=False,
     # Create an ID for figures (path to experiment dir)
     fig_id = '{}: {}'.format(src_dir.split(rootdir)[1], datestr)
 
-
     # List all files and have user select index of file to process
     if user_input:
         # Get a list of all the data files
@@ -68,8 +67,9 @@ def plot_trajectory(experiment, datestr, parse_info=False, user_input=False,
 
     # get experimentally determined odor boundaries:
     ogrid = butil.get_odor_grid(df0, odor_width=odor_width, grid_sep=grid_sep,
-                                use_crossings=True, verbose=False)
-    (odor_xmin, odor_xmax), = ogrid.values()
+                                use_crossings=True, verbose=False, )
+    #(odor_xmin, odor_xmax), = ogrid.values()
+    odor_bounds = list(ogrid.values())
 
     # Set some plotting params 
     hue_varname='instrip'
@@ -82,13 +82,16 @@ def plot_trajectory(experiment, datestr, parse_info=False, user_input=False,
     fig, ax = pl.subplots()
     sns.scatterplot(data=df0, x="ft_posx", y="ft_posy", ax=ax, 
                     hue=hue_varname, s=0.5, edgecolor='none', palette=palette)
-    butil.plot_odor_corridor(ax, odor_xmin=odor_xmin, odor_xmax=odor_xmax)
+    for (odor_xmin, odor_xmax) in odor_bounds:
+        butil.plot_odor_corridor(ax, odor_xmin=odor_xmin, odor_xmax=odor_xmax)
+
     ax.legend(bbox_to_anchor=(1,1), loc='upper left', title=hue_varname)
     if fly_id is not None:
         ax.set_title(fly_id)
     else:
         ax.set_title(datestr)
     pl.subplots_adjust(left=0.2, right=0.8)
+
     # Center corridor
     xmax = np.ceil(df0['ft_posx'].abs().max())
     ax.set_xlim([-xmax-10, xmax+10])
