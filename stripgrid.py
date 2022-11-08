@@ -106,6 +106,8 @@ def main():
         if verbose:
             print(date_str, fly_id, cond)
         df_ = butil.load_dataframe(fpath, mfc_id=None, verbose=False, cond=cond)
+        fname = os.path.splitext(os.path.split(fpath)[-1])[0]
+        df_['filename'] = fname
         dlist.append(df_)
     df0 = pd.concat(dlist, axis=0)
 
@@ -131,12 +133,12 @@ def main():
     if not plot_group:
         for trial_id, plotdf in df0.groupby('trial_id'):
             fig, ax = pl.subplots()
-            title = os.path.splitext(os.path.split(fpath)[-1])[0] 
+            fname = plotdf['filename'].unique()[0]
             if start_at_odor:
                 start_ix = plotdf[plotdf['instrip']].iloc[0].name
             else:
                 start_ix = plotdf.iloc[0].name
-            butil.plot_trajectory(plotdf.loc[start_ix:], title=title, ax=ax)
+            butil.plot_trajectory(plotdf.loc[start_ix:], title=fname, ax=ax)
             #sns.scatterplot(data=plotdf, x="ft_posx", y="ft_posy", hue=hue_varname,
             #            s=0.5, edgecolor='none', palette=palette, ax=ax)
             for obound in odor_borders[trial_id]:
