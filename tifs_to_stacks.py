@@ -53,7 +53,6 @@ def main():
             already_processed.append(tdir)
     tifs_to_process = [d for d in tif_dirs if d not in already_processed]
 
-    []
     tifs_to_run = []
     for tdir in tifs_to_process:
         print(os.path.split(tdir)[-1])
