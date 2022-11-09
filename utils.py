@@ -118,7 +118,7 @@ def set_sns_style(style='dark'):
 #        pl.rcParams['axes.facecolor'] = 'black'
         sns.set_style("dark", rc=custom_style)
 
-    pl.rcParams['savefig.dpi'] = 300
+    pl.rcParams['savefig.dpi'] = 400
 
 def add_colorwheel(fig, cmap='hsv', axes=[0.7, 0.7, 0.3, 0.3], 
                    theta_range=[-np.pi, np.pi], deg2plot=None, theta_units='rad'):
