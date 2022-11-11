@@ -1,4 +1,4 @@
-#504!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 '''
 File           : behavior.py
@@ -11,16 +11,20 @@ Copyright (c) 2022 Your Company
 
 import os
 import time
-
+import glob
 import re
 from datetime import datetime
 import numpy as np
 import pandas as pd
+import scipy as sp
 
 import utils as util
 import rdp
+import _pickle as pkl
+
 
 # plotting
+import matplotlib as mpl
 import plotly.express as px
 import pylab as pl
 import seaborn as sns
@@ -30,6 +34,19 @@ import seaborn as sns
 # ----------------------------------------------------------------------
 def parse_info_from_file(fpath, experiment=None, 
             rootdir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
+    '''
+    _summary_
+
+    Arguments:
+        fpath -- _description_
+
+    Keyword Arguments:
+        experiment -- _description_ (default: {None})
+        rootdir -- _description_ (default: {'/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'})
+
+    Returns:
+        experiment, datestr, fly_id, condition
+    '''
 
     info_str = fpath.split('{}/'.format(rootdir))[-1]
     exp_cond_str, log_fname = os.path.split(info_str)
@@ -104,18 +121,19 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
     # if air_only==True, that means that we can ignore LEDs (not powered on)
     if 'led1_stpt' in df0.columns and 'led_on' not in df0.columns:
         df0['led_on'] = False
-    if cond=='reinforced':
-        # for newer exp, weird thing where LED signal is 1 for "off" 
-        led1_vals = df0[~df0['instrip']]['led1_stpt'].unique() 
-        assert len(led1_vals)==1, "Too many out of strip values for LED: {}".format(str(led1_vals))
-        if led1_vals[0]==1: # when out of strip, no reinforcement. if has 1 and 0, likely, 1=off
-            df0['led_on'] = df0['led1_stpt']==0 # 1 is OFF, and 0 is ON (led2 is always 0)
-        elif led1_vals[0]==0:
-            df0['led_on'] = df0['led1_stpt']==1 # 1 is ON, and 0 is OFF (led2 is always 0)
-    elif cond in ['odor', 'air']:
-        df0['led_on'] = False
-    elif cond=='light' or cond=='lightonly':
-        df0['led_on'] = df0['led1_stpt']==1 # 20221018, quick fix for now bec dont know when things changed
+    if 'led1_stpt' in df0.columns:
+        if cond=='reinforced':
+            # for newer exp, weird thing where LED signal is 1 for "off" 
+            led1_vals = df0[~df0['instrip']]['led1_stpt'].unique() 
+            assert len(led1_vals)==1, "Too many out of strip values for LED: {}".format(str(led1_vals))
+            if led1_vals[0]==1: # when out of strip, no reinforcement. if has 1 and 0, likely, 1=off
+                df0['led_on'] = df0['led1_stpt']==0 # 1 is OFF, and 0 is ON (led2 is always 0)
+            elif led1_vals[0]==0:
+                df0['led_on'] = df0['led1_stpt']==1 # 1 is ON, and 0 is OFF (led2 is always 0)
+        elif cond in ['odor', 'air']:
+            df0['led_on'] = False
+        else: #if cond=='light' or cond=='lightonly':
+            df0['led_on'] = df0['led1_stpt']==1 # 20221018, quick fix for now bec dont know when things changed
 
     # split up the timstampe str
     df0['timestamp'] = df0['timestamp -- motor_step_command']\
@@ -130,6 +148,11 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
     # convert datestr
     df0['date'] = df0['timestamp'].apply(lambda s: \
             int(datetime.strptime(s.split('-')[0], "%m/%d/%Y").strftime("%Y%m%d")))
+
+    # check for wonky skips
+    df0, ft_flag = check_ft_skips(df0, pvar='ft_posy', max_step_size=5)
+    if ft_flag:
+        print("--> found wonky FTs, check: {}".format(fpath))
 
     if parse_info:
         # get experiment info
@@ -148,6 +171,18 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
 
     return df0
 
+def check_ft_skips(df, pvar='ft_posy', max_step_size=5):
+    wonky_skips = np.where(df[pvar].diff().abs()>=max_step_size)[0]
+    if len(wonky_skips)>0:
+        flag=True
+        valid_df = df.iloc[0:wonky_skips[0]]
+        sz_removed = df.shape[0] - valid_df.shape[0]
+        print("WARNING: found wonky ft skip. Removing {} samples.".format(sz_removed))
+    else:
+        flag=False
+        valid_df = df
+    return valid_df, flag
+
 def load_dataframe_resampled_csv(fpath):
 
     df_full = pd.read_table(fpath, sep=",", skiprows=[1], header=0, 
@@ -160,6 +195,53 @@ def load_dataframe_resampled_csv(fpath):
     other_cols = [c for c in df_full.columns if c not in df0.columns]
     for c in other_cols:
         df0[c] = df_full[c]
+
+    return df0
+
+def save_df(df, fpath):
+    with open(fpath, 'wb') as f:
+        pkl.dump(df, f)
+
+def load_df(fpath):
+    with open(fpath, 'rb') as f:
+        df = pkl.load(f)
+    return df
+
+def load_combined_df(src_dir, create_new=False):
+
+    # first, check if combined df exists
+    if 'raw' in src_dir:
+        src_dir_temp = os.path.split(src_dir)[0]
+    else:
+        src_dir_temp = src_dir
+    fpath = os.path.join(src_dir_temp, 'combined_df.pkl')
+    if os.path.exists(fpath) and create_new is False:
+        print("loading existing combined df")
+        try:
+            df = load_df(fpath)
+            return df
+        except Exception as e:
+            create_new=True
+
+    if create_new:
+        print("Creating new combined df from raw files...")
+        log_files = sorted([k for k in glob.glob(os.path.join(src_dir, '*.log'))\
+                if 'lossed tracking' not in k], key=util.natsort)
+        print("Found {} tracking files.".format(len(log_files)))
+
+        dlist = []
+        for fpath in log_files:
+            air_only = '_Air' in fpath or '_air' in fpath
+            #print(fpath, air_only)
+            exp, datestr, fly_id, cond = parse_info_from_file(fpath)
+            print(exp, datestr, fly_id, cond)
+            df_ = load_dataframe(fpath, mfc_id=None, verbose=False, cond=cond)
+            dlist.append(df_)
+        df0 = pd.concat(dlist, axis=0)
+
+        # save
+        print("Saving combined df to: {}".format(src_dir_temp))
+        save_df(df0, fpath)
 
     return df0
 
@@ -248,12 +330,14 @@ def get_odor_params(df, odor_width=50, entry_ix=None, is_grid=False, check_odor=
 # Data processing
 # ----------------------------------------------------------------------
 def process_df(df0, xvar='ft_posx', yvar='ft_posy', 
-                conditions=['odor', 'reinforced'], bout_thresh=0.5):
-    df = df0[df0['condition'].isin(conditions)].copy()
+                conditions=None, bout_thresh=0.5, 
+                smooth=False, window_size=11):
+    if conditions is not None:
+        df = df0[df0['condition'].isin(conditions)].copy()
+    else:
+        df = df0.copy()
     dlist=[]
     for (fly_id, cond), df_ in df.groupby(['fly_id', 'condition']):
-        for varname in ['ft_posx', 'ft_posy']:
-            df_ = smooth_traces(df_, varname=varname, window_size=101)
         # parse in and out bouts
         df_ = parse_bouts(df_, count_varname='instrip', bout_varname='boutnum') # 1-count
         # filter in and out bouts by min. duration 
@@ -261,7 +345,11 @@ def process_df(df0, xvar='ft_posx', yvar='ft_posy',
                             bout_varname='boutnum', count_varname='instrip', verbose=False)
         df_ = calculate_speed(df_, xvar=xvar, yvar=yvar) # smooth=False, window_size=11, return_same=True)
         df_ = calculate_distance(df_, xvar=xvar, yvar=yvar)
+        if smooth:
+            #for varname in ['ft_posx', 'ft_posy']:
+            df_ = smooth_traces(df_, window_size=window_size, return_same=True)
         dlist.append(df_)
+
     DF=pd.concat(dlist, axis=0).reset_index(drop=True)
 
     return DF
@@ -302,7 +390,7 @@ def calculate_speed(df0, xvar='ft_posx', yvar='ft_posy'):
 
     return df0
 
-def calculate_speed2(df0, smooth=True, window_size=101, return_same=True):
+def calculate_speed2(df0, smooth=True, window_size=11, return_same=True):
     '''
     Calculate instantaneous speed from pos1 to pos2 using linalg.norm().
 
@@ -322,7 +410,7 @@ def calculate_speed2(df0, smooth=True, window_size=101, return_same=True):
     diff_df['cum_time'] = diff_df['time'].cumsum() # Get relative time  
 
     if smooth:
-        diff_df = smooth_traces(diff_df, varname='speed', window_size=window_size)
+        diff_df = smooth_traces_each(diff_df, varname='speed', window_size=window_size)
 
     if return_same:
         df0['speed'] = diff_df['speed']
@@ -466,13 +554,42 @@ def filter_bouts_by_dur(df, bout_thresh=0.5, bout_varname='boutnum',
     return df
 
 
-def smooth_traces(df, varname='speed', window_size=101):
-    new_varname = 'smoothed_{}'.format(varname)
+def smooth_traces_each(df, varname='speed', window_size=11, return_same=True):
+    smooth_t = util.temporal_downsample(df[varname], window_size)
+
     #df[new_varname] = util.smooth_timecourse(df[varname], window_size)
-    df[new_varname] = util.temporal_downsample(df[varname], window_size)
+
+    if return_same:
+        new_varname = 'smoothed_{}'.format(varname)
+        df[new_varname] = smooth_t
+        return df
+    else:
+        return smooth_t
+
+def smooth_traces(df, xvar='ft_posx', yvar='ft_posy', window_size=13, return_same=True):
+    for v in [xvar, yvar]:
+        df = smooth_traces_each(df, varname=v, window_size=window_size, return_same=True)
+
     return df
 
+def smooth_traces_interp(df, xvar='ft_posx', yvar='ft_posy', window_size=13, return_same=True):
 
+    arr = df[[xvar, yvar]].values
+    x, y = zip(*arr)
+    #create spline function
+    x = np.arange(0, len(y))
+    x = df['time'].values
+    f, u = sp.interpolate.splprep([x, y], s=window_size, per=False)
+    #create interpolated lists of points
+    #npts = int(np.round(len(x)*0.25))
+    xint, yint = sp.interpolate.splev(np.linspace(0, 1, len(x)), f)
+
+    if return_same:
+        df['smoothed_{}'.format(xvar)] = xint
+        df['smoothed_{}'.format(yvar)] = yint
+        return df
+    else:
+        return xint, yint
 
 # checks 
 def find_odor_grid(df, odor_width=10, grid_sep=200): #use_crossings=True,
@@ -556,7 +673,7 @@ def check_odor_grid(df, odor_grid, odor_width=10, grid_sep=200, use_crossings=Tr
             curr_grid_ix = int(cnum[1:])
             # check if there was any crossing..
             crossed_edge = are_there_crossings(df, curr_odor_xmin, curr_odor_xmax)
-            print("Crossings? {}".format(crossed_edge))
+            #print("Crossings? {}".format(crossed_edge))
             # if crossings detected, find traveled max/min 
             if crossed_edge:
                 traveled_xmin, traveled_xmax = get_boundary_from_crossings(df, 
@@ -691,7 +808,8 @@ def get_boundary_from_crossings(df, curr_odor_xmin, curr_odor_xmax, ix=0,
 
     return traveled_xmin, traveled_xmax 
 
-# 
+# Ramer-Douglas-Peuker functions (RDP)
+# --------------------------------------------------------------------
 def dsquared_line_points(P1, P2, points):
     '''
     Calculate only squared distance, only needed for comparison
@@ -751,20 +869,81 @@ def rdp_numpy(M, epsilon = 0):
 
     return mask
 
-def rdp_mask(df, epsilon=0.1):
-    M = df[['ft_posx', 'ft_posy']].values
+def rdp_mask(df, epsilon=0.1, xvar='ft_posx', yvar='ft_posy'):
+    M = df[[xvar, yvar]].values
     simp = rdp_numpy(M, epsilon = epsilon)
 
     return simp
 
-def add_rdp_by_bout(df_, epsilon=0.1):
-    df_['rdp_posx'] = None
-    df_['rdp_posy'] = None
+def add_rdp_by_bout(df_, epsilon=0.1, xvar='ft_posx', yvar='ft_posy'):
+    df_['rdp_{}'.format(xvar)] = None
+    df_['rdp_{}'.format(yvar)] = None
     for b, b_ in df_.groupby(['condition', 'boutnum']):
-        simp = rdp_mask(b_, epsilon=epsilon)
-        df_.loc[b_.index, 'rdp_posx'] = simp[:, 0]
-        df_.loc[b_.index, 'rdp_posy'] = simp[:, 1]
+        simp = rdp_mask(b_, epsilon=epsilon, xvar=xvar, yvar=yvar)
+        df_.loc[b_.index, 'rdp_{}'.format(xvar)] = simp[:, 0]
+        df_.loc[b_.index, 'rdp_{}'.format(yvar)] = simp[:, 1]
     return df_
+
+
+def get_rdp_distances(df_, rdp_var='rdp_ft_posx'):
+    dists_=[]
+    for bi, (bnum, b_) in enumerate(df_.groupby('boutnum')):
+        rdp_points = b_[b_[rdp_var]].shape[0]
+        #if rdp_points <=2 :
+        total_dist = b_['euclid_dist'].sum()
+        r_ = pd.DataFrame({'boutnum': bnum,
+                           'rdp_points': rdp_points,
+                           'euclid_dist': b_['euclid_dist'].sum()-b_['euclid_dist'].iloc[0],
+                           'upwind_dist': b_['upwind_dist'].sum()-b_['upwind_dist'].iloc[0],
+                           'crosswind_dist': b_['crosswind_dist'].sum()-b_['crosswind_dist'].iloc[0],
+                          },
+                           index=[bi]
+                          )
+        dists_.append(r_)
+    rdp_dists = pd.concat(dists_)
+
+    return rdp_dists
+
+def plot_overlay_rdp_v_smoothed(b_, ax, xvar='ft_posx', yvar='ft_posy', epsilon=1):
+
+    if 'rdp_{}'.format(xvar) not in b_.columns:
+        add_rdp_by_bout(b_, epsilon=epsilon, xvar=xvar, yvar=yvar)
+
+    rdp_x = 'rdp_{}'.format(xvar)
+    rdp_y = 'rdp_{}'.format(yvar)
+    ax.plot(b_['ft_posx'], b_['ft_posy'], 'w', alpha=1, lw=0.5)
+    ax.plot(b_[b_[rdp_x]][xvar], b_[b_[rdp_y]][yvar], 'r', alpha=1, lw=0.5)
+    if 'smoothed_ft_posx' in b_.columns:
+        ax.plot(b_['smoothed_ft_posx'], b_['smoothed_ft_posy'], 'cornflowerblue', alpha=0.7)
+    ax.scatter(b_[b_[rdp_x]][xvar], b_[b_[rdp_y]][yvar], 
+               c=b_[b_[rdp_x]]['speed'], alpha=1, s=3)
+
+
+def plot_overlay_rdp_v_smoothed_multi(df_, boutlist=None, nr=4, nc=6, distvar=None,
+                                rdp_epsilon=1.0, smooth_window=11, xvar='ft_posx', yvar='ft_posy'):
+    if boutlist is None:
+        #boutlist = list(np.arange(1, nr*nc))
+        nbouts_plot = nr*nc
+        boutlist = df_['boutnum'].unique()[0:nbouts_plot]
+    fig, axes = pl.subplots(nr, nc, figsize=(10,6))
+    for ax, bnum in zip(axes.flat, boutlist):
+        b_ = df_[(df_['boutnum']==bnum)].copy()
+        plot_overlay_rdp_v_smoothed(b_, ax, xvar=xvar, yvar=yvar)
+        if distvar is not None:
+            dist_traveled = b_[distvar].sum()-b_[distvar].iloc[0]
+            ax.set_title('{}: {:.2f}'.format(bnum, dist_traveled))
+        else:
+            ax.set_title(bnum)
+    for ax in axes.flat:
+        ax.set_aspect('equal')
+        ax.axis('off')
+    legh = [mpl.lines.Line2D([0], [0], color='w', lw=2, label='orig'),
+           mpl.lines.Line2D([0], [0], color='r', lw=2, label='RDP ({})'.format(rdp_epsilon))]
+    if 'smoothed_ft_posx' in b_.columns: 
+        legh.append(mpl.lines.Line2D([0], [0], color='b', lw=2, label='smoothed ({})'.format(smooth_window)))
+   
+    axes.flat[nc-1].legend(handles=legh, bbox_to_anchor=(1,1), loc='upper left')
+    return fig
 
 # ----------------------------------------------------------------------
 # Visualization
@@ -796,22 +975,29 @@ def plot_trajectory_from_file(fpath, parse_info=False,
 
 def plot_trajectory(df0, odor_bounds=[], ax=None,
         hue_varname='instrip', palette={True: 'r', False: 'w'},
-        start_at_odor = True, odor_lc='lightgray', odor_lw=0.5, title=''):
+        start_at_odor = True, odor_lc='lightgray', odor_lw=0.5, title='',
+        markersize=0.5, center=True):
+
     # ---------------------------------------------------------------------
     if ax is None: 
         fig, ax = pl.subplots()
+    if not isinstance(odor_bounds, list):
+        odor_bounds = [odor_bounds]
     sns.scatterplot(data=df0, x="ft_posx", y="ft_posy", ax=ax, 
-                    hue=hue_varname, s=0.5, edgecolor='none', palette=palette)
+                    hue=hue_varname, s=markersize, edgecolor='none', palette=palette)
     for (odor_xmin, odor_xmax) in odor_bounds:
         plot_odor_corridor(ax, odor_xmin=odor_xmin, odor_xmax=odor_xmax)
 
-    odor_start_ix = df0[df0['instrip']].iloc[0]['ft_posy']
-    ax.axhline(y=odor_start_ix, color='w', lw=0.5, linestyle=':')
+    if df0[df0['instrip']].shape[0]>0:
+        odor_start_ix = df0[df0['instrip']].iloc[0]['ft_posy']
+        ax.axhline(y=odor_start_ix, color='w', lw=0.5, linestyle=':')
+
     ax.legend(bbox_to_anchor=(1,1), loc='upper left', title=hue_varname)
     ax.set_title(title)
-    # Center corridor
-    xmax = np.ceil(df0['ft_posx'].abs().max())
-    ax.set_xlim([-xmax-10, xmax+10])
+    if center:
+        # Center corridor
+        xmax = np.ceil(df0['ft_posx'].abs().max())
+        ax.set_xlim([-xmax-10, xmax+10])
     pl.subplots_adjust(left=0.2, right=0.8)
 
     return ax
