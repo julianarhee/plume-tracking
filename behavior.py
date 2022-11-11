@@ -132,8 +132,9 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
                 df0['led_on'] = df0['led1_stpt']==1 # 1 is ON, and 0 is OFF (led2 is always 0)
         elif cond in ['odor', 'air']:
             df0['led_on'] = False
-        else: #if cond=='light' or cond=='lightonly':
-            df0['led_on'] = df0['led1_stpt']==1 # 20221018, quick fix for now bec dont know when things changed
+        else: #if cond=='light' or cond=='lightonly':   
+            # TODO: add check for datestr
+            df0['led_on'] = df0['led1_stpt']==0 # 20221018, quick fix for now bec dont know when things changed
 
     # split up the timstampe str
     df0['timestamp'] = df0['timestamp -- motor_step_command']\
