@@ -21,7 +21,7 @@ import scipy as sp
 import utils as util
 import rdp
 import _pickle as pkl
-
+import scipy.stats as sts
 
 # plotting
 import matplotlib as mpl
@@ -87,7 +87,7 @@ def parse_info_from_file(fpath, experiment=None,
 
     return experiment, date_str, fly_id, condition
 
-def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
+def load_dataframe_test(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
                     parse_info=True):
     '''
     Read raw .log file from behavior and return formatted dataframe.
@@ -100,8 +100,43 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
     '''
     # read .log as dataframe 
 
-    df0 = pd.read_table(fpath, sep=",", skiprows=[1], header=0, 
-              parse_dates=[1]).rename(columns=lambda x: x.strip())
+    df0 = pd.read_csv(fpath) #, encoding='latin' )#, sep=",", skiprows=[1], header=0, 
+              #parse_dates=[1]).rename(columns=lambda x: x.strip())
+
+
+    return df0
+
+
+def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
+                    parse_info=True, savedir=None):
+    '''
+    Read raw .log file from behavior and return formatted dataframe.
+    Assumes MFC for odor is either 'mfc2_stpt' or 'mfc3_stpt'.
+    Assumes LED for on is 'led1_stpt'.
+
+    Arguments:
+        fpath -- (str) Full path to .log file
+        mfc_id -- None, will find mfc var for odor automatically, otherwise "mfc2"
+    '''
+    # read .log as dataframe 
+
+    df0 = pd.read_csv(fpath, encoding='latin' )#, sep=",", skiprows=[1], header=0, 
+              #parse_dates=[1]).rename(columns=lambda x: x.strip())
+
+    # split up the timstampe str
+    df0['timestamp'] = df0['timestamp -- motor_step_command']\
+                            .apply(lambda x: x.split(' -- ')[0])
+    df0['motor_step_command'] = df0['timestamp -- motor_step_command']\
+                            .apply(lambda x: x.split(' -- ')[1]).astype('int')
+    # convert timestamp str into datetime obj, convert to sec
+    datefmt  = '%m/%d/%Y-%H:%M:%S.%f'
+    df0['time'] = df0['timestamp'].apply(lambda x: \
+                            time.mktime(datetime.strptime(x, datefmt).timetuple()) \
+                            + datetime.strptime(x, datefmt).microsecond / 1E6 ).astype('float')
+    # convert datestr
+    df0['date'] = df0['timestamp'].apply(lambda s: \
+            int(datetime.strptime(s.split('-')[0], "%m/%d/%Y").strftime("%Y%m%d")))
+
     if 'instrip' not in df0.columns:
         df0['instrip'] = False
         if mfc_id is not None:
@@ -121,39 +156,36 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
     # if air_only==True, that means that we can ignore LEDs (not powered on)
     if 'led1_stpt' in df0.columns and 'led_on' not in df0.columns:
         df0['led_on'] = False
-    if 'led1_stpt' in df0.columns:
-        if cond=='reinforced':
-            # for newer exp, weird thing where LED signal is 1 for "off" 
-            led1_vals = df0[~df0['instrip']]['led1_stpt'].unique() 
-            assert len(led1_vals)==1, "Too many out of strip values for LED: {}".format(str(led1_vals))
-            if led1_vals[0]==1: # when out of strip, no reinforcement. if has 1 and 0, likely, 1=off
-                df0['led_on'] = df0['led1_stpt']==0 # 1 is OFF, and 0 is ON (led2 is always 0)
-            elif led1_vals[0]==0:
-                df0['led_on'] = df0['led1_stpt']==1 # 1 is ON, and 0 is OFF (led2 is always 0)
-        elif cond in ['odor', 'air']:
-            df0['led_on'] = False
-        else: #if cond=='light' or cond=='lightonly':   
-            # TODO: add check for datestr
-            df0['led_on'] = df0['led1_stpt']==0 # 20221018, quick fix for now bec dont know when things changed
 
-    # split up the timstampe str
-    df0['timestamp'] = df0['timestamp -- motor_step_command']\
-                            .apply(lambda x: x.split(' -- ')[0])
-    df0['motor_step_command'] = df0['timestamp -- motor_step_command']\
-                            .apply(lambda x: x.split(' -- ')[1]).astype('int')
-    # convert timestamp str into datetime obj, convert to sec
-    datefmt  = '%m/%d/%Y-%H:%M:%S.%f'
-    df0['time'] = df0['timestamp'].apply(lambda x: \
-                            time.mktime(datetime.strptime(x, datefmt).timetuple()) \
-                            + datetime.strptime(x, datefmt).microsecond / 1E6 ).astype('float')
-    # convert datestr
-    df0['date'] = df0['timestamp'].apply(lambda s: \
-            int(datetime.strptime(s.split('-')[0], "%m/%d/%Y").strftime("%Y%m%d")))
+    if 'led1_stpt' in df0.columns:
+#        if cond=='reinforced':
+#            # for newer exp, weird thing where LED signal is 1 for "off" 
+#            led1_vals = df0[~df0['instrip']]['led1_stpt'].unique() 
+#            assert len(led1_vals)==1, "Too many out of strip values for LED: {}".format(str(led1_vals))
+#            if led1_vals[0]==1: # when out of strip, no reinforcement. if has 1 and 0, likely, 1=off
+#                df0['led_on'] = df0['led1_stpt']==0 # 1 is OFF, and 0 is ON (led2 is always 0)
+#            elif led1_vals[0]==0:
+#                df0['led_on'] = df0['led1_stpt']==1 # 1 is ON, and 0 is OFF (led2 is always 0)
+        datestr = int(df0['date'].unique())
+        if int(datestr) <= 20200720:
+            df0['led_on'] = df0['led1_stpt']==1 
+        else:
+            df0['led_on'] = df0['led1_stpt']==0
+
+        if cond in ['odor', 'air']:
+            df0['led_on'] = False
+
+#        else: #if cond=='light' or cond=='lightonly':   
+#            # TODO: add check for datestr
+#            df0['led_on'] = df0['led1_stpt']==0 # 20221018, quick fix for now bec dont know when things changed
 
     # check for wonky skips
-    df0, ft_flag = check_ft_skips(df0, pvar='ft_posy', max_step_size=5)
+    df0, ft_flag = check_ft_skips(df0, plot=True)
     if ft_flag:
         print("--> found wonky FTs, check: {}".format(fpath))
+        if savedir is not None:
+            fname = os.path.splitext(os.path.split(fpath)[-1])[0]
+            pl.savefig(os.path.join(savedir, 'wonkyft_{}.png'.format(fname)))
 
     if parse_info:
         # get experiment info
@@ -172,16 +204,46 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
 
     return df0
 
-def check_ft_skips(df, pvar='ft_posy', max_step_size=5):
-    wonky_skips = np.where(df[pvar].diff().abs()>=max_step_size)[0]
-    if len(wonky_skips)>0:
+
+
+
+def check_ft_skips(df, plot=False):
+    bad_skips={}
+    max_step_size={'ft_posx': 10, 'ft_posy': 10, 'ft_frame': 100}
+    for pvar, stepsize in max_step_size.items():
+        if pvar=='ft_frame':
+            wonky_skips = np.where(df[pvar]==1)[0]
+            if len(wonky_skips)>1:
+                wonky_skips = wonky_skips[1:]
+            else:
+                wonky_skips = []
+        wonky_skips = np.where(df[pvar].diff().abs()>=stepsize)[0]
+        if len(wonky_skips)>0:
+            first_step = df[pvar].diff().abs().max()
+            #time_step = df.iloc[wonky_skips[0]]['time'] - df.iloc[wonky_skips[0]-1]['time']
+            bad_skips.update({pvar: wonky_skips})
+            print("WARNING: found wonky ft skip ({} jumped {:.2f}).".format(pvar, first_step))
+    if len(bad_skips.keys())>0:
+        if plot==True:
+            fig, ax = pl.subplots() 
+            ax.plot(df['ft_frame'].diff().abs())
+            cols = ['r', 'b', 'g']
+            for pi, ((pvar, off_ixs), col) in enumerate(zip(bad_skips.items(), cols)):
+                for i in off_ixs:
+                    ax.plot(df.iloc[i].name, pi*100, '*', c=col, label=pvar)
+            ax.legend()
+            pl.show()
+
+    if len(bad_skips)>0:
         flag=True
-        valid_df = df.iloc[0:wonky_skips[0]]
+        wonky_skips = bad_skips['ft_frame']
+        valid_df = df.iloc[0:wonky_skips[0]].copy()
         sz_removed = df.shape[0] - valid_df.shape[0]
-        print("WARNING: found wonky ft skip. Removing {} samples.".format(sz_removed))
+        print("Removing {} of {} samples.".format(sz_removed, df.shape[0]))
     else:
         flag=False
-        valid_df = df
+        valid_df = df.copy()
+
     return valid_df, flag
 
 def load_dataframe_resampled_csv(fpath):
@@ -208,21 +270,29 @@ def load_df(fpath):
         df = pkl.load(f)
     return df
 
-def load_combined_df(src_dir, create_new=False):
+def load_combined_df(src_dir, create_new=False, verbose=False, save_errors=True):
 
     # first, check if combined df exists
     if 'raw' in src_dir:
         src_dir_temp = os.path.split(src_dir)[0]
     else:
         src_dir_temp = src_dir
-    fpath = os.path.join(src_dir_temp, 'combined_df.pkl')
-    if os.path.exists(fpath) and create_new is False:
+
+    df_fpath = os.path.join(src_dir_temp, 'combined_df.pkl')
+    if os.path.exists(df_fpath) and create_new is False:
         print("loading existing combined df")
         try:
-            df = load_df(fpath)
+            df = load_df(df_fpath)
             return df
         except Exception as e:
             create_new=True
+
+    if save_errors:
+        savedir = os.path.join(src_dir_temp, 'errors')
+        if not os.path.exists(savedir):
+            os.makedirs(savedir)
+    else:
+        savedir=None
 
     if create_new:
         print("Creating new combined df from raw files...")
@@ -231,20 +301,21 @@ def load_combined_df(src_dir, create_new=False):
         print("Found {} tracking files.".format(len(log_files)))
 
         dlist = []
-        for fpath in log_files:
-            air_only = '_Air' in fpath or '_air' in fpath
-            #print(fpath, air_only)
-            exp, datestr, fly_id, cond = parse_info_from_file(fpath)
-            print(exp, datestr, fly_id, cond)
-            df_ = load_dataframe(fpath, mfc_id=None, verbose=False, cond=cond)
+        for fn in log_files:
+            #air_only = '_Air' in fpath or '_air' in fpath
+            #print(fn, air_only)
+            exp, datestr, fly_id, cond = parse_info_from_file(fn)
+            if verbose:
+                print(exp, datestr, fly_id, cond)
+            df_ = load_dataframe(fn, mfc_id=None, verbose=False, cond=cond, savedir=savedir)
             dlist.append(df_)
-        df0 = pd.concat(dlist, axis=0)
+        df = pd.concat(dlist, axis=0)
 
         # save
         print("Saving combined df to: {}".format(src_dir_temp))
-        save_df(df0, fpath)
+        save_df(df, df_fpath)
 
-    return df0
+    return df
 
 def check_entry_left(df, entry_ix=0):
     '''
@@ -291,27 +362,36 @@ def get_odor_params(df, odor_width=50, entry_ix=None, is_grid=False, check_odor=
          'odor_boundary': (float, float) # x boundaries of odor corridor
          'odor_start_pos': (float, float) # animal's position at odor onset
     '''
-    if entry_ix is None:
-        entry_ix = df[df['instrip']].iloc[0].name
-    entry_left = check_entry_left(df, entry_ix=entry_ix)
-    
-    currdf = df.loc[entry_ix:].copy()
-    if is_grid and entry_left is not None: # entry_left must be true or false
-        if entry_left:
-            odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] 
-            odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] + odor_width
-        else: # entered right, so entry point is largest val
-            odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] - odor_width
-            odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] 
+    if df[df['instrip']].shape[0]==0:
+        #print(df.shape)
+        entry_left=False
+        odor_xmin = -odor_width/2.
+        odor_xmax = odor_width/2.
+        odor_start_time = df.iloc[0]['time']
+        odor_start_posx, odor_start_posy = (0, 0)
+        currdf = df.copy()
     else:
-        odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] - (odor_width/2.)
-        odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] + (odor_width/2.)
+        if entry_ix is None:
+            entry_ix = df[df['instrip']].iloc[0].name
+        entry_left = check_entry_left(df, entry_ix=entry_ix)
+    
+        currdf = df.loc[entry_ix:].copy()
+        if is_grid and entry_left is not None: # entry_left must be true or false
+            if entry_left:
+                odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] 
+                odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] + odor_width
+            else: # entered right, so entry point is largest val
+                odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] - odor_width
+                odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] 
+        else:
+            odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] - (odor_width/2.)
+            odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] + (odor_width/2.)
+        
+        odor_start_time = currdf[currdf['instrip']].iloc[0]['time']
+        odor_start_posx = currdf[currdf['instrip']].iloc[0]['ft_posx']
+        odor_start_posy = currdf[currdf['instrip']].iloc[0]['ft_posy']
 
     trial_start_time = currdf.iloc[0]['time']
-    odor_start_time = currdf[currdf['instrip']].iloc[0]['time']
-
-    odor_start_posx = currdf[currdf['instrip']].iloc[0]['ft_posx']
-    odor_start_posy = currdf[currdf['instrip']].iloc[0]['ft_posy']
 
     if check_odor:
         assert odor_start_time == currdf.iloc[df[mfc_var].argmax()]['time'],\
@@ -469,7 +549,7 @@ def parse_bouts(df, count_varname='instrip', bout_varname='boutnum', verbose=Fal
     if count_varname == 'instrip':
         bout_varname = 'boutnum'
     elif count_varname == 'stopped':
-        bout_varname = 'stopbout'
+        bout_varname = 'stopboutnum'
     assert count_varname in df.columns, "ERR: Nothing to pares, var <{}> not found.".format(count_varname)
 
     if bout_varname in df.columns and verbose:
@@ -528,7 +608,7 @@ def filter_bouts_by_dur(df, bout_thresh=0.5, bout_varname='boutnum',
     if count_varname == 'instrip':
         bout_varname = 'boutnum'
     elif count_varname == 'stopped':
-        bout_varname = 'stopbout'
+        bout_varname = 'stopboutnum'
 
     if bout_varname not in df.columns:
         df = parse_bouts(df, count_varname=count_varname, bout_varname=bout_varname)
@@ -592,7 +672,20 @@ def smooth_traces_interp(df, xvar='ft_posx', yvar='ft_posy', window_size=13, ret
     else:
         return xint, yint
 
-# checks 
+# checks
+def get_odor_grid_all_flies(df0, odor_width=50, grid_sep=200):
+    odor_borders={}
+    for trial_id, currdf in df0.groupby(['trial_id']):
+        ogrid, in_odor = get_odor_grid(currdf, odor_width=odor_width, grid_sep=grid_sep,
+                                    use_crossings=True, verbose=False)
+        if not in_odor:
+            print(trial_id, "WARNING: Fly never in odor (cond={})".format(currdf['condition'].unique()))
+        (odor_xmin, odor_xmax), = ogrid.values()
+        odor_borders.update({trial_id: (odor_xmin, odor_xmax)})
+
+    return odor_borders
+
+ 
 def find_odor_grid(df, odor_width=10, grid_sep=200): #use_crossings=True,
 #                   use_mean=True, verbose=True):
     '''
@@ -609,13 +702,16 @@ def find_odor_grid(df, odor_width=10, grid_sep=200): #use_crossings=True,
         _description_
     '''
     # get first odor entry
-    assert len(df['instrip'].unique())==2
+    assert len(df['instrip'].unique())==2, "Fly not in odor."
     curr_odor_xmin = df[df['instrip']].iloc[0]['ft_posx'] - (odor_width/2.)
     curr_odor_xmax = df[df['instrip']].iloc[0]['ft_posx'] + (odor_width/2.)
+
     # identify other grid crossings
     indf = df[df['instrip']].copy()
     # initiate grid dict
     odor_grid = {'c{}'.format(indf.iloc[0].name): (curr_odor_xmin, curr_odor_xmax)}
+
+    indf = df[df['instrip']].copy()
     # where is the fly outside of current odor boundary but still instrip:
     # nextgrid_df = indf[ (indf['ft_posx']>curr_odor_xmax.round(2)) | ((indf['ft_posx']<curr_odor_xmin.round(2)))].copy()
     nextgrid_df = indf[ (indf['ft_posx']>np.ceil(curr_odor_xmax)) \
@@ -639,12 +735,21 @@ def find_odor_grid(df, odor_width=10, grid_sep=200): #use_crossings=True,
 
 def get_odor_grid(df, odor_width=10, grid_sep=200, use_crossings=True,
                     use_mean=True, verbose=True):
-    odor_grid = find_odor_grid(df, odor_width=odor_width, grid_sep=grid_sep)
-
-    odor_grid = check_odor_grid(df, odor_grid, odor_width=odor_width, grid_sep=grid_sep, 
+    if df[df['instrip']].shape[0]==0:
+        # fly never in odor
+        if verbose:
+            print("WARNING: Fly is never in odor, using default corridor.")
+        curr_odor_xmin = -odor_width/2.
+        curr_odor_xmax = odor_width/2.
+        odor_grid = {'c0': (curr_odor_xmin, curr_odor_xmax)}
+        odor_flag = False
+    else:
+        odor_grid = find_odor_grid(df, odor_width=odor_width, grid_sep=grid_sep)
+        odor_grid = check_odor_grid(df, odor_grid, odor_width=odor_width, grid_sep=grid_sep, 
                         use_crossings=use_crossings, use_mean=use_mean, verbose=verbose)
+        odor_flag = True
 
-    return odor_grid
+    return odor_grid, odor_flag
 
 def check_odor_grid(df, odor_grid, odor_width=10, grid_sep=200, use_crossings=True,
                     use_mean=True, verbose=True):
@@ -765,26 +870,28 @@ def get_boundary_from_crossings(df, curr_odor_xmin, curr_odor_xmax, ix=0,
     # get index of each bout's 1st entry, make sure to start from outstrip
     # ... left side
     first_in_ixs_left=[]
-    starts_instrip = left_xings.iloc[0]['instrip']
-    for bi, (bnum, bdf) in enumerate(left_xings[left_xings['instrip']].groupby('boutnum')):
-        if starts_instrip and bi==0: # special case of crossing, get last instri and first outstrip
-            in_ix = bdf.sort_values(by='time').iloc[-1].name
-            if in_ix<df.iloc[-1].name: # found index is smaller than last index 
-                first_in_ixs_left.extend([in_ix, in_ix+1])
-            continue
-        in_ix = bdf.iloc[0].name
-        first_in_ixs_left.extend([in_ix-1, in_ix])
+    if left_xings.shape[0]>0:
+        starts_instrip = left_xings.iloc[0]['instrip']
+        for bi, (bnum, bdf) in enumerate(left_xings[left_xings['instrip']].groupby('boutnum')):
+            if starts_instrip and bi==0: # special case of crossing, get last instri and first outstrip
+                in_ix = bdf.sort_values(by='time').iloc[-1].name
+                if in_ix<df.iloc[-1].name: # found index is smaller than last index 
+                    first_in_ixs_left.extend([in_ix, in_ix+1])
+                continue
+            in_ix = bdf.iloc[0].name
+            first_in_ixs_left.extend([in_ix-1, in_ix])
     # ... right side
     first_in_ixs_right=[]
-    starts_instrip = right_xings.iloc[0]['instrip']
-    for bi, (bnum, bdf) in enumerate(right_xings[right_xings['instrip']].groupby('boutnum')):
-        if starts_instrip and bi==0: # special case of crossing, get last instri and first outstrip
-            in_ix = bdf.sort_values(by='time').iloc[-1].name
-            if in_ix<df.iloc[-1].name: # found index is smaller than last index 
-                first_in_ixs_right.extend([in_ix, in_ix+1])
-            continue
-        in_ix = bdf.iloc[0].name
-        first_in_ixs_right.extend([in_ix-1, in_ix])
+    if right_xings.shape[0]>0:
+        starts_instrip = right_xings.iloc[0]['instrip']
+        for bi, (bnum, bdf) in enumerate(right_xings[right_xings['instrip']].groupby('boutnum')):
+            if starts_instrip and bi==0: # special case of crossing, get last instri and first outstrip
+                in_ix = bdf.sort_values(by='time').iloc[-1].name
+                if in_ix<df.iloc[-1].name: # found index is smaller than last index 
+                    first_in_ixs_right.extend([in_ix, in_ix+1])
+                continue
+            in_ix = bdf.iloc[0].name
+            first_in_ixs_right.extend([in_ix-1, in_ix])
 
     # select xmin/xmax based on actual travel positions
     if len(first_in_ixs_right)>0 and len(first_in_ixs_left)==0: # animal always on larger edge
@@ -926,7 +1033,7 @@ def plot_overlay_rdp_v_smoothed_multi(df_, boutlist=None, nr=4, nc=6, distvar=No
         #boutlist = list(np.arange(1, nr*nc))
         nbouts_plot = nr*nc
         boutlist = df_['boutnum'].unique()[0:nbouts_plot]
-    fig, axes = pl.subplots(nr, nc, figsize=(10,6))
+    fig, axes = pl.subplots(nr, nc, figsize=(nc*2, nr*1.5))
     for ax, bnum in zip(axes.flat, boutlist):
         b_ = df_[(df_['boutnum']==bnum)].copy()
         plot_overlay_rdp_v_smoothed(b_, ax, xvar=xvar, yvar=yvar)
@@ -946,6 +1053,172 @@ def plot_overlay_rdp_v_smoothed_multi(df_, boutlist=None, nr=4, nc=6, distvar=No
     axes.flat[nc-1].legend(handles=legh, bbox_to_anchor=(1,1), loc='upper left')
     return fig
 
+
+# TURN ANGLES AND HEADING
+# --------------------------------------------------------------------
+
+def convert_cw(v):
+    vv=v.copy()
+    vv[v<0] += 2*np.pi
+#     if angle < 0:
+#         angle += 2 * math.pi
+    #vv = (180. / np.pi) * v
+    return vv  #(180 / math.pi) * angle
+
+
+def examine_heading_in_bout(b_, theta_range=(0, 2*np.pi), xvar='ft_posx', yvar='ft_posy'):
+    fig, axn = pl.subplots(2, 2, figsize=(8, 6), sharex=True, sharey=True)
+    ax=axn[0, 0]
+    sns.scatterplot(data=b_, x="ft_posx", y="ft_posy", ax=ax,
+                    hue='time', s=4, edgecolor='none', palette='viridis')
+    ax.legend(bbox_to_anchor=(-0.1, 1.4), ncols=2, loc='upper left', title='time')
+    # ---------------------
+    ax=axn[0, 1]
+    sns.scatterplot(data=b_, x="ft_posx", y="ft_posy", ax=ax,
+                    hue='ft_heading_deg', s=4, edgecolor='none', palette='hsv')
+    ax.legend(bbox_to_anchor=(-0.1, 1.4), ncols=2, loc='upper left', title='ft_heading')
+    #theta_range = (0, 2*np.pi)
+    cax = util.add_colorwheel(fig, axes=[0.75, 0.5, 0.25, 0.25], theta_range=theta_range, cmap='hsv') 
+    # ---------------------
+    ax=axn[1, 0]; ax.set_title('arctan2')
+    rdp_x ='rdp_{}'.format(xvar)
+    rdp_y ='rdp_{}'.format(yvar)
+    xv = b_[b_[rdp_x]][xvar]
+    yv = b_[b_[rdp_y]][yvar]
+    angles = convert_cw(np.arctan2(np.gradient(xv*3), np.gradient(yv*3)) )
+    assert angles.min().round(1)==0, "Min ({:.2f}) is not 0".format(angles.min())
+    assert angles.max().round(1)==round(2*np.pi, 1), "Min ({:.2f}) is not 2pi".format(angles.max())
+    # print('cw arctan2: ({:.2f}, {:.2f})'.format(angles.min(), angles.max()))
+    # -- 
+    rdp_var = rdp_x
+    ax.plot(b_[xvar], b_[yvar], 'w', lw=0.5)
+    ax.scatter(b_[b_[rdp_x]][xvar], b_[b_[rdp_y]][yvar], 
+            c=angles, cmap='hsv')
+    xy = b_[b_[rdp_var]][[xvar, yvar]].values
+    xy = xy.reshape(-1, 1, 2)
+    segments = np.hstack([xy[:-1], xy[1:]])
+    coll = mpl.collections.LineCollection(segments, cmap='hsv') #plt.cm.gist_ncar)
+    coll.set_array(angles) #np.random.random(xy.shape[0]))
+    ax.add_collection(coll)
+    # ---------------------
+    # mean angles
+    ixs = b_[b_[rdp_var]].index.tolist()
+    mean_angles=[] #sts.circmean(b_.loc[ix:ixs[i+1]]['ft_heading'], high=2*np.pi, low=0)]
+    for i, ix in enumerate(ixs[0:-1]):
+        ang = sts.circmean(b_.loc[ix:ixs[i+1]]['ft_heading'], high=2*np.pi, low=0)
+        mean_angles.append(ang)
+        if i==0:
+            mean_angles.append(ang)
+    mean_angles = np.array(mean_angles)
+    assert mean_angles.min().round(1)==0, "Min ({:.2f}) is not 0".format(mean_angles.min())
+    assert mean_angles.max().round(1)==round(2*np.pi, 1), "Min ({:.2f}) is not 2pi".format(mean_angles.max())
+    # print('mean angles: ({:.2f}, {:.2f})'.format(min(mean_angles), max(mean_angles)))
+    # ---
+    ax=axn[1,1]; ax.set_title('mean angles')
+    ax.plot(b_[xvar], b_[yvar], 'w', lw=0.5)
+    ax.scatter(b_[b_[rdp_x]][xvar], b_[b_[rdp_y]][yvar], 
+            c=mean_angles, cmap='hsv')
+    xy = b_[b_[rdp_var]][[xvar, yvar]].values
+    xy = xy.reshape(-1, 1, 2)
+    segments = np.hstack([xy[:-1], xy[1:]])
+    col2 = mpl.collections.LineCollection(segments, cmap='hsv') #plt.cm.gist_ncar)
+    col2.set_array(mean_angles) #np.random.random(xy.shape[0]))
+    ax.add_collection(col2)
+    return fig
+
+
+def examine_heading_at_stops(b_, xvar='ft_posx', yvar='ft_posy'):
+    fig, axn = pl.subplots(1, 3, figsize=(9, 4), sharex=True, sharey=True)
+    ax=axn[0]
+    cmap = pl.get_cmap("viridis")
+    b_['time'] -= b_['time'].iloc[0]
+    norm = pl.Normalize(b_['time'].min(), b_['time'].max())
+    sns.scatterplot(data=b_, x="ft_posx", y="ft_posy", ax=ax,
+                    hue='time', s=3, edgecolor='none', palette=cmap, legend=False)
+    #ax.legend(bbox_to_anchor=(-0.2, 1.), ncols=2, loc='lower left', title='time')
+    sm =  mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=ax)
+    cbar.ax.set_title("time", fontsize=10)
+    cbar.ax.tick_params(labelsize=10)
+    # ---------------------
+    ax=axn[1]
+    if b_.shape[0]>10000:
+        skip_every=20
+        print("skipping some")
+    else:
+        skip_every=1
+    sns.scatterplot(data=b_.iloc[0::skip_every], x="smoothed_ft_posx", y="smoothed_ft_posy", ax=ax,
+                    hue='stopped', s=5, edgecolor='none', palette={True: 'r', False: 'w'}, alpha=0.5)
+    n_stops_in_bout = len(b_[b_['stopped']]['stopboutnum'].unique())
+    leg = ax.legend(bbox_to_anchor=(1, 1.), ncols=1, loc='upper left', \
+              title='stopped (n={})'.format(n_stops_in_bout), fontsize=6)
+    ax.get_legend()._legend_box.align = "left"
+    pl.setp(leg.get_title(),fontsize='x-small')
+    # ---------------------
+    ax=axn[2]; #ax.set_title('rdp-heading')
+    rdp_x ='rdp_{}'.format(xvar)
+    rdp_y ='rdp_{}'.format(yvar)
+    xv = b_[b_[rdp_x]][xvar]
+    yv = b_[b_[rdp_y]][yvar]
+    angles = convert_cw(np.arctan2(np.gradient(xv*3), np.gradient(yv*3)) )
+    # -- 
+    ax.plot(b_[xvar], b_[yvar], 'w', lw=0.5)
+    ax.scatter(b_[b_[rdp_x]][xvar], b_[b_[rdp_y]][yvar], 
+            c=angles, cmap='hsv', s=4) 
+    xy = b_[b_[rdp_x]][[xvar, yvar]].values
+    xy = xy.reshape(-1, 1, 2)
+    segments = np.hstack([xy[:-1], xy[1:]])
+    coll = mpl.collections.LineCollection(segments, cmap='hsv') #plt.cm.gist_ncar)
+    coll.set_array(angles) #np.random.random(xy.shape[0]))
+    ax.add_collection(coll)
+    # legend
+    theta_range = (0, 2*np.pi)
+    cax = util.add_colorwheel(fig, axes=[0.8, 0.5, 0.2, 0.2], theta_range=theta_range, cmap='hsv') 
+    cax.set_title('rdp-heading', fontsize=10)
+    # -----
+    pl.subplots_adjust(right=0.8, top=0.7, wspace=0.8, bottom=0.2, left=0.1)
+
+    return fig
+
+
+# data processing
+def get_speed_and_stops(b_, speed_thresh=1.0, stopdur_thresh=0.5,
+                        xvar='smoothed_ft_posx', yvar='smoothed_ft_posy'):
+    b_ = calculate_speed(b_, xvar=xvar, yvar=yvar)
+    b_ = calculate_stops(b_, stop_thresh=speed_thresh, speed_varname='speed')
+    b_ = parse_bouts(b_, count_varname='stopped', bout_varname='stopboutnum')
+    b_ = filter_bouts_by_dur(b_, bout_thresh=stopdur_thresh, \
+                               count_varname='stopped', bout_varname='stopboutnum')
+    return b_
+
+def mean_dir_after_stop(df, speed_thresh=1.0, stopdur_thresh=0.5):
+    d_list = []
+    i=0
+    for bnum, b_ in df.groupby('boutnum'):
+        # b_ = get_speed_and_stops(b_, speed_thresh=speed_thresh, stopdur_thresh=stopdur_thresh)
+        xwind_dist = b_['crosswind_dist'].sum() - b_['crosswind_dist'].iloc[0]
+        stopbouts = b_[b_['stopped']]['stopboutnum'].unique()
+        #print(bnum, len(stopbouts))
+        for snum in stopbouts:
+            if b_[b_['stopboutnum']==(snum+1)].shape[0]==0:
+                continue
+            d_ = pd.DataFrame({
+                'fly_id': b_['fly_id'].unique()[0],
+                'trial_id': b_['trial_id'].unique()[0],
+                'condition': b_['condition'].unique()[0],
+                'boutnum': bnum,
+                'crosswind_dist': xwind_dist,
+                'stopboutnum': snum,
+                'meandir': np.rad2deg(sts.circmean(b_[b_['stopboutnum']==(snum+1)]['ft_heading']))},
+                index=[i]
+            )
+            i+=1
+            d_list.append(d_)
+    meandirs = pd.concat(d_list)
+    return meandirs
+
+
 # ----------------------------------------------------------------------
 # Visualization
 # ----------------------------------------------------------------------
@@ -963,7 +1236,7 @@ def plot_trajectory_from_file(fpath, parse_info=False,
         fly_id = df0['fly_id'].unique()[0]
 
     # get experimentally determined odor boundaries:
-    ogrid = get_odor_grid(df0, odor_width=odor_width, grid_sep=grid_sep,
+    ogrid, in_odor = get_odor_grid(df0, odor_width=odor_width, grid_sep=grid_sep,
                             use_crossings=True, verbose=False )
     #(odor_xmin, odor_xmax), = ogrid.values()
     odor_bounds = list(ogrid.values())
@@ -995,10 +1268,14 @@ def plot_trajectory(df0, odor_bounds=[], ax=None,
 
     ax.legend(bbox_to_anchor=(1,1), loc='upper left', title=hue_varname)
     ax.set_title(title)
+    xmax=500
     if center:
-        # Center corridor
-        xmax = np.ceil(df0['ft_posx'].abs().max())
-        ax.set_xlim([-xmax-10, xmax+10])
+        try:
+            # Center corridor
+            xmax = np.ceil(df0['ft_posx'].dropna().abs().max())
+            ax.set_xlim([-xmax-10, xmax+10])
+        except ValueError as e:
+            xmax = 500
     pl.subplots_adjust(left=0.2, right=0.8)
 
     return ax
