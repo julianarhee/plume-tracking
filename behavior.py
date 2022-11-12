@@ -65,19 +65,22 @@ def parse_info_from_file(fpath, experiment=None,
     date_str = re.search('[0-9]{8}-[0-9]{6}', log_fname)[0]
     cond_str = os.path.splitext(log_fname)[0].split('{}_'.format(date_str))[-1]
     # 
-    if re.search('fly\d{1,3}[a-zA-Z]?', cond_str, re.IGNORECASE):
-        #fly_id = re.search('fly\d{1,3}[a-zA-Z]?', log_fname, re.IGNORECASE)
-        #condition = cond_str.split('{}_'.format(fly_id))[-1]
-        condition = [c for c in cond_str.split('{}'.format(fly_id)) \
-                        if c!=fly_id and len(c)>1]
-        for ci, c in enumerate(condition):
-            if c.endswith('_'): 
-                condition[ci] = c[:-1]
-            elif c.startswith('_'):
-                condition[ci] = c[1:]
-        condition = condition[0]
-    else:
-        condition = cond_str
+#    if re.search('fly\d{1,3}[a-zA-Z]?', cond_str, re.IGNORECASE):
+#        #fly_id = re.search('fly\d{1,3}[a-zA-Z]?', log_fname, re.IGNORECASE)
+#        #condition = cond_str.split('{}_'.format(fly_id))[-1]
+#        condition = [c for c in cond_str.split('{}'.format(fly_id)) \
+#                        if c!=fly_id and len(c)>1]
+#        for ci, c in enumerate(condition):
+#            if c.endswith('_'): 
+#                condition[ci] = c[:-1]
+#            elif c.startswith('_'):
+#                condition[ci] = c[1:]
+#        condition = condition[0]
+#    else:
+#        condition = cond_str
+    #condition = '_'.join([c for c in cond_str.split('_') if fly_id not in c ])
+    condition = '_'.join([c for c in cond_str.split('_') if fly_id not in c and not re.search('\d{3}', c)])
+
     #print(exp_cond, fly_id, condition)
 
     if fly_id is not None:
