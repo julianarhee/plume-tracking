@@ -309,4 +309,34 @@ def circular_hist(ax, x, bins=16, density=True, offset=0, gaps=True,
      
     return n, bins, patches
 
+def colorbar_from_mappable(ax, norm, cmap, hue_title=''):
+    fig = ax.figure
+    #ax.legend_.remove()
+    sm =  mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=ax)
+    cbar.ax.set_title(hue_title, fontsize=10)
+    cbar.ax.tick_params(labelsize=10)
+
+
+def plot_vector_path(ax, x, y, c, scale=1.5, width=0.005, headwidth=5,
+                    colormap=mpl.cm.plasma, vmin=None, vmax=None, hue_title=''):
+    if vmin is None:
+        #vmin, vmax = b_[hue_param].min(), b_[hue_param].max()
+        vmin, vmax = c.min(), c.max()
+    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    #colors=b_[hue_param]
+
+#     uu = b_['ft_posx'].shift(periods=-1) - b_['ft_posx']
+#     vv = b_['ft_posy'].shift(periods=-1) - b_['ft_posy']
+#     ax.quiver(b_['ft_posx'].values, b_['ft_posy'].values, uu, vv, color=colormap(norm(colors)), 
+#               angles='xy', scale_units='xy', scale=1.5)
+    uu = np.roll(x, -1) - x # b_['ft_posx']
+    vv = np.roll(y, -1) - y #b_['ft_posy'].shift(periods=-1) - b_['ft_posy']
+    uu[-1]=np.nan
+    vv[-1]=np.nan
+    ax.quiver(x, y, uu, vv, color=colormap(norm(c)), 
+              angles='xy', scale_units='xy', scale=scale, width=width, headwidth=headwidth)
+    colorbar_from_mappable(ax, norm, cmap=colormap, hue_title=hue_title)
+    return ax
 
