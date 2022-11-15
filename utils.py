@@ -73,6 +73,20 @@ def make_ordinal(n):
 # ----------------------------------------------------------------------
 # Calculation
 # ----------------------------------------------------------------------
+def unwrap_and_constrain_angles(phases):
+    '''
+    Equivalent to unwrap, then constraining within (-pi, pi)
+    ft_heading is [0, 2*np.pi), so must account for diffs that wrap bw 0 and 2pi 
+    and make continuous.
+    default is pi -- unwraps p s.t. adjacent diffs never greater than pi
+    
+    Arguments:
+         phases (should be in radians)
+    '''
+    p = (phases + np.pi) % (2 * np.pi ) - np.pi
+
+    return p
+
 def rotate_coordinates(x, y, theta):
     '''
     Rotate coordinates by theta (in radians).
