@@ -73,6 +73,20 @@ def make_ordinal(n):
 # ----------------------------------------------------------------------
 # Calculation
 # ----------------------------------------------------------------------
+def get_CoM(df_, xvar='ft_posx', yvar='ft_posy'):
+    '''
+    Calculate center of mass from coords x0, y0 in dataframe df_
+    '''
+    x = df_[xvar].values
+    y = df_[yvar].values
+    m=np.ones(df_[xvar].shape)
+
+    #m = np.ones(x.shape)
+    cgx = np.sum(x*m)/np.sum(m)
+    cgy = np.sum(y*m)/np.sum(m)
+    
+    return cgx, cgy
+
 def unwrap_and_constrain_angles(phases):
     '''
     Equivalent to unwrap, then constraining within (-pi, pi)
@@ -166,7 +180,7 @@ def set_sns_style(style='dark'):
 
     pl.rcParams['savefig.dpi'] = 400
 
-def add_colorwheel(fig, cmap='hsv', axes=[0.7, 0.7, 0.3, 0.3], fontsize=7,
+def add_colorwheel(fig, cmap='hsv', axes=[0.8, 0.8, 0.1, 0.1], fontsize=7,
                    theta_range=[-np.pi, np.pi], deg2plot=None, theta_units='rad'):
     display_axes = fig.add_axes(axes, projection='polar')
     # display_axes._direction = max(theta_range) #2*np.pi ## This is a nasty hack - using the hidden field to 
@@ -221,7 +235,8 @@ def add_colorwheel(fig, cmap='hsv', axes=[0.7, 0.7, 0.3, 0.3],
 
     return display_axes
 
-def circular_hist(ax, x, bins=16, density=True, offset=0, gaps=True, facecolor=[0.7]*3):
+def circular_hist(ax, x, bins=16, density=True, offset=0, gaps=True, 
+                    edgecolor='w', facecolor=[0.7]*3, alpha=0.7):
     """
     Produce a circular histogram of angles on ax.
 
@@ -281,14 +296,14 @@ def circular_hist(ax, x, bins=16, density=True, offset=0, gaps=True, facecolor=[
         radius = n
     # Plot data on ax
     patches = ax.bar(bins[:-1], radius, zorder=1, width=widths, #align='edge', 
-                     edgecolor='w', fill=True, linewidth=0.5, facecolor=facecolor,
-                    alpha=0.5)
+                     edgecolor=edgecolor, fill=True, linewidth=0.5, facecolor=facecolor,
+                    alpha=alpha)
     # Set the direction of the zero angle
     ax.set_theta_offset(offset)
     # Remove ylabels for area plots (they are mostly obstructive)
     if density:
         ax.set_yticks([])
-
+        #ax.tick_params(which='both', axis='both', size=0)
     ax.set_theta_zero_location('N')
     ax.set_theta_direction(-1)  # theta increasing clockwise
      

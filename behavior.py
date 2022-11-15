@@ -1,4 +1,4 @@
-#!n_dir_af/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 '''
 File           : behavior.py
@@ -144,7 +144,7 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
     # convert ft_heading to make it continuous and in range (-pi, pi)
     if 'ft_heading' in df0.columns:
         p = util.unwrap_and_constrain_angles(df0['ft_heading'].values)
-        df0['ft_heading'] = p 
+        df0['ft_heading'] = -p 
 
     # Calculate some additional vars
     if 'instrip' not in df0.columns:
@@ -395,7 +395,7 @@ def check_entry_left_edge(df, entry_ix=0, return_bool=False):
     #if df.iloc[0].name==0:
     # check first entry *after* odor start that is also UPWIND
     outbouts_after_entry = df[~df['instrip']].loc[entry_ix:] #.iloc[0].name
-    upwind_before_entry = [b for b, b_ in outbouts_after_entry.groupby(['boutnum']) \
+    upwind_before_entry = [b for b, b_ in outbouts_after_entry.groupby('boutnum') \
                             if b_.iloc[-20:]['ft_posy'].diff().sum()>=0]
     entry_lefts=[]
     for start_at_this_outbout in upwind_before_entry:
@@ -1184,6 +1184,7 @@ def plot_overlay_rdp_v_smoothed(b_, ax, xvar='ft_posx', yvar='ft_posy', epsilon=
 #    ax.scatter(b_[b_[rdp_var]][xvar], b_[b_[rdp_y]][yvar], 
 #               c=b_[b_[rdp_var]]['speed'], alpha=1, s=3)
 
+
 def plot_overlay_rdp_v_smoothed_multi(df_, boutlist=None, nr=4, nc=6, distvar=None,
                                 sharex=False, sharey=False,
                                 rdp_epsilon=1.0, smooth_window=11, xvar='ft_posx', yvar='ft_posy'):
@@ -1191,7 +1192,7 @@ def plot_overlay_rdp_v_smoothed_multi(df_, boutlist=None, nr=4, nc=6, distvar=No
         #boutlist = list(np.arange(1, nr*nc))
         nbouts_plot = nr*nc
         boutlist = df_['boutnum'].unique()[0:nbouts_plot]
-    fig, axes = pl.subplots(nr, nc, figsize=(nc*2, nr*1.5), sharex=sharex, sharey=sharey)
+    fig, axes = pl.subplots(nr, nc, figsize=(nc*2, nr*2.5), sharex=sharex, sharey=sharey)
     for bi, bnum in enumerate(boutlist):
         ax = axes.flat[bi]
         b_ = df_[(df_['boutnum']==bnum)].copy() 
@@ -1210,6 +1211,7 @@ def plot_overlay_rdp_v_smoothed_multi(df_, boutlist=None, nr=4, nc=6, distvar=No
         legh.append(mpl.lines.Line2D([0], [0], color='b', lw=2, label='smoothed ({})'.format(smooth_window)))
    
     axes.flat[nc-1].legend(handles=legh, bbox_to_anchor=(1,1), loc='upper left')
+    pl.subplots_adjust(bottom=0.2)
     return fig
 
 
@@ -1250,7 +1252,7 @@ def make_continuous(mapvals):
     #map_c = map_c % (2*np.pi)
     return map_c
 
-def rdp_to_heading(b_, xvar='ft_posx', yvar='ft_posy', theta_range=(0, 2*np.pi)):
+def rdp_to_heading(b_, xvar='ft_posx', yvar='ft_posy', theta_range=(-np.pi, np.pi)):
     '''
     Calculate vector between each point in RDP-simplified coordinates.
     Wraps radians to be within (-pi and pi). Values should correspond to 
@@ -1289,7 +1291,7 @@ def rdp_to_heading(b_, xvar='ft_posx', yvar='ft_posy', theta_range=(0, 2*np.pi))
     return b_
 
 def mean_heading_across_rdp(b_, xvar='ft_posx', yvar='ft_posy', 
-                    heading_var='ft_heading', theta_range=(0, 2*np.pi)):
+                    heading_var='ft_heading', theta_range=(-np.pi, np.pi)):
     rdp_var='rdp_{}'.format(xvar) 
     ixs = b_[b_[rdp_var]].index.tolist()
     mean_angles=[] 
@@ -1310,7 +1312,7 @@ def mean_heading_across_rdp(b_, xvar='ft_posx', yvar='ft_posy',
 
     return b_
 
-def examine_heading_in_bout(b_, theta_range=(0, 2*np.pi), xvar='ft_posx', yvar='ft_posy',
+def examine_heading_in_bout(b_, theta_range=(-np.pi, np.pi), xvar='ft_posx', yvar='ft_posy',
                         heading_var_og='ft_heading', heading_var='ft_heading', theta_cmap='hsv', 
                         leg_size=0.1, show_angles=False):
     fig, axn = pl.subplots(2, 2, figsize=(8, 6), sharex=True, sharey=True)
@@ -1321,17 +1323,23 @@ def examine_heading_in_bout(b_, theta_range=(0, 2*np.pi), xvar='ft_posx', yvar='
     # --------------------------------------------------------- 
     # plot given heading (from ft, or wherever validating to)
     # ---------------------------------------------------------
+    norm = mpl.colors.Normalize(theta_range[0], theta_range[1])
+
     ax=axn[0, 1]
+    if 'deg' in heading_var_og:
+        heading_norm = tuple(np.rad2deg(theta_range)) 
+    else:
+        heading_norm = norm
     sns.scatterplot(data=b_, x="ft_posx", y="ft_posy", ax=ax,
                     hue=heading_var_og, s=5, edgecolor='none', palette=theta_cmap,
-                    hue_norm=theta_range) #tuple(np.rad2deg(theta_range)))
+                    hue_norm=heading_norm) #tuple(np.rad2deg(theta_range)))
     ax.legend(bbox_to_anchor=(-0.1, 1.01), ncols=2, loc='lower left', title=heading_var_og)
-    cax = util.add_colorwheel(fig, axes=[0.75, 0.7, leg_size, leg_size], 
+    wheel_axis = [0.75, 0.3, leg_size, leg_size] if show_angles else [0.75, 0.7, leg_size, leg_size]
+    cax = util.add_colorwheel(fig, axes=wheel_axis, 
                     theta_range=theta_range, cmap=theta_cmap) 
     # ---------------------------------------------------------
     # plot calculated direction vectors 
     # ---------------------------------------------------------
-    norm = mpl.colors.Normalize(theta_range[0], theta_range[1])
     ax=axn[1, 0]; ax.set_title('rdp-arctan2')
     b_ = rdp_to_heading(b_, xvar='ft_posx', yvar='ft_posy', theta_range=theta_range)
     rdp_var ='rdp_{}'.format(xvar)
@@ -1364,9 +1372,11 @@ def plot_bout(b_, ax, xvar='ft_posx', yvar='ft_posy', hue_var='time',
     #                hue='ft_heading_deg', s=4, edgecolor='none', palette=theta_cmap,
     #                hue_norm=tuple(np.rad2deg(theta_range)))
 
-    sns.scatterplot(data=b_, x=xvar, y=yvar, ax=ax, alpha=alpha,
+    ax = sns.scatterplot(data=b_, x=xvar, y=yvar, ax=ax, alpha=alpha,
                     hue=hue_var, s=markersize, edgecolor='none', 
-                    palette=cmap, hue_norm=norm)#, legend=False)
+                    palette=cmap, hue_norm=norm, legend=plot_legend)
+
+    pl.setp(ax.collections, alpha=alpha)
     if plot_legend:
         if plot_cbar:
             ax.legend_.remove()
@@ -1377,11 +1387,11 @@ def plot_bout(b_, ax, xvar='ft_posx', yvar='ft_posy', hue_var='time',
             cbar.ax.tick_params(labelsize=10)
         else:
             leg = ax.legend(bbox_to_anchor=(1, 1.), ncols=ncols, loc='upper left', \
-                  title=hue_title, fontsize=6)
+                  title=hue_title, fontsize=6, frameon=False)
             ax.get_legend()._legend_box.align = "left"
             pl.setp(leg.get_title(),fontsize='x-small')
-    else:
-        ax.legend_.remove()
+    #else:
+    #    ax.legend_.remove()
 
     return ax
 
@@ -1400,7 +1410,7 @@ def add_colored_lines(b_, ax, xvar='ft_posx', yvar='ft_posy',
     return ax
 
 def examine_heading_at_stops(b_, xvar='ft_posx', yvar='ft_posy',
-                    theta_range=(0, 2*np.pi), theta_cmap='hsv', show_angles=False):
+                    theta_range=(-np.pi, np.pi), theta_cmap='hsv', show_angles=False):
     fig, axn = pl.subplots(1, 4, figsize=(10, 4), sharex=True, sharey=True)
     ax=axn[0]
     cmap = pl.get_cmap("viridis")
@@ -1414,7 +1424,7 @@ def examine_heading_at_stops(b_, xvar='ft_posx', yvar='ft_posy',
     cmap = pl.get_cmap("magma")
     norm = pl.Normalize(b_['speed'].min(), b_['speed'].max())
     plot_bout(b_, ax, hue_var='speed', norm=norm, cmap=cmap, 
-                hue_title=None, plot_cbar=True)
+                hue_title=None, plot_cbar=True, alpha=0.5)
     # -------------------------- 
     ax=axn[2]
     if b_.shape[0]>10000:
@@ -1425,7 +1435,7 @@ def examine_heading_at_stops(b_, xvar='ft_posx', yvar='ft_posy',
     palette={True: 'r', False: 'w'}
     n_stops_in_bout = len(b_[b_['stopped']]['stopboutnum'].unique())
     hue_title =  'stopped (n={})'.format(n_stops_in_bout)
-    ax = plot_bout(b_, ax, hue_var='stopped', xvar='ft_posx', yvar='ft_posy',
+    ax = plot_bout(b_.iloc[0::skip_every], ax, hue_var='stopped', xvar='ft_posx', yvar='ft_posy',
                 cmap=palette, hue_title=hue_title, ncols=1, alpha=0.5, plot_legend=True)
     # ---------------------
     ax=axn[3]; #ax.set_title('rdp-heading')
@@ -1438,11 +1448,15 @@ def examine_heading_at_stops(b_, xvar='ft_posx', yvar='ft_posy',
                 hue_var='rdp_arctan2', norm=theta_norm, cmap=theta_cmap,
                 markersize=20, plot_legend=show_angles)
     if show_angles:
-        ax.legend(bbox_to_anchor=(1,1.1), loc='lower left')
+        ax.legend(bbox_to_anchor=(1,1), loc='upper left', fontsize=6)
     ax = add_colored_lines(b_[b_[rdp_var]], ax, hue_var='rdp_arctan2', cmap=theta_cmap, norm=theta_norm)
     # ------
     # legend
-    cax = util.add_colorwheel(fig, axes=[0.8, 0.6, 0.1, 0.1], theta_range=theta_range, cmap='hsv') 
+    leg_size=0.1
+    wheel_axis = [0.8, 0.3, leg_size, leg_size] if show_angles else [0.8, 0.6, leg_size, leg_size]
+    cax = util.add_colorwheel(fig, axes=wheel_axis, 
+                    theta_range=theta_range, cmap=theta_cmap) 
+    #cax = util.add_colorwheel(fig, axes=[0.8, 0.6, 0.1, 0.1], theta_range=theta_range, cmap='hsv') 
     cax.set_title('rdp-heading', fontsize=7)
     # -----
     pl.subplots_adjust(right=0.8, top=0.7, wspace=0.8, bottom=0.2, left=0.1)
@@ -1460,8 +1474,10 @@ def get_speed_and_stops(b_, speed_thresh=1.0, stopdur_thresh=0.5,
                                count_varname='stopped', bout_varname='stopboutnum')
     return b_
 
-def mean_dir_after_stop(df, heading_var='ft_heading', speed_thresh=1.0, stopdur_thresh=0.5,
-                    theta_range=(0, 2*np.pi)):
+def mean_dir_after_stop(df, heading_var='ft_heading',theta_range=(-np.pi, np.pi),
+                xvar='ft_posx', yvar='ft_posy'):
+    rdp_var = 'rdp_{}'.format(xvar)
+    #speed_thresh=1.0, stopdur_thresh=0.5,
     d_list = []
     i=0
     for bnum, b_ in df.groupby('boutnum'):
@@ -1469,9 +1485,18 @@ def mean_dir_after_stop(df, heading_var='ft_heading', speed_thresh=1.0, stopdur_
         xwind_dist = b_['crosswind_dist'].sum() - b_['crosswind_dist'].iloc[0]
         stopbouts = b_[b_['stopped']]['stopboutnum'].unique()
         #print(bnum, len(stopbouts))
-        for snum in stopbouts:
-            if b_[b_['stopboutnum']==(snum+1)].shape[0]==0:
-                continue
+        instrip_vals = b_['instrip'].unique()
+        assert len(instrip_vals)==1, "Non-unique vals instrip (boutnum={})".format(bnum)
+
+        for snum, s_ in b_[b_['stopboutnum'].isin(stopbouts)].groupby('stopboutnum'):
+            start_ix = s_.iloc[0].name
+            #end_ix = b_[b_[rdp_var]].loc[start_ix:].iloc[1].name
+            rest_of_chunk = b_[b_[rdp_var]].loc[start_ix:]
+            if rest_of_chunk.shape[0] <= 1:
+                end_ix = rest_of_chunk.iloc[0].name
+            else:
+                end_ix = rest_of_chunk.iloc[1].name # pref to get next rdp
+            s_chunk = b_.loc[start_ix:end_ix]
             d_ = pd.DataFrame({
                 'fly_id': b_['fly_id'].unique()[0],
                 'trial_id': b_['trial_id'].unique()[0],
@@ -1479,7 +1504,8 @@ def mean_dir_after_stop(df, heading_var='ft_heading', speed_thresh=1.0, stopdur_
                 'boutnum': bnum,
                 'crosswind_dist': xwind_dist,
                 'stopboutnum': snum,
-                'meandir': np.rad2deg(sts.circmean(b_[b_['stopboutnum']==(snum+1)][heading_var],\
+                'instrip': instrip_vals[0],
+                'meandir': np.rad2deg(sts.circmean(s_chunk[heading_var],\
                                 high=theta_range[1], low=theta_range[0]))},
                 index=[i]
             )
@@ -1487,6 +1513,55 @@ def mean_dir_after_stop(df, heading_var='ft_heading', speed_thresh=1.0, stopdur_
             d_list.append(d_)
     meandirs = pd.concat(d_list)
     return meandirs
+
+
+def summarize_stops_and_turns(df_, meanangs_, last_,  odor_width=10, xvar='ft_posx', yvar='ft_posy',
+                    laststop_color='b', stop_color=[0.9]*3, theta_range=(-np.pi, np.pi), offset=20,
+                    theta_cmap='hsv', instrip_palette={True: 'r', False: 'w'}, xlims=None,
+                    stop_marker='.', stop_markersize=3, lw=0):
+    
+    trial_id = df_['trial_id'].unique()[0]
+    # Construct figure and axis to plot on
+    fig = pl.figure( figsize=(8, 6))
+    ax = fig.add_subplot(1, 2, 1)
+    oparams = get_odor_params(df_, odor_width=odor_width, is_grid=True)
+    ax= plot_trajectory(df_, ax=ax, odor_bounds=oparams['odor_boundary'], 
+                              palette=instrip_palette)
+    # plot all stops
+    ax.scatter(df_[df_['stopped']][xvar], df_[df_['stopped']][yvar], marker=stop_marker,
+                    s=stop_markersize, c=stop_color, linewidth=lw)
+    # plot last stops
+    ax.scatter(df_[df_['is_last']][xvar], df_[df_['is_last']][yvar], marker=stop_marker,
+                    s=stop_markersize, c=laststop_color, linewidth=lw)
+    if xlims is None:
+        xlims = (df_[xvar].min()-offset, df_[xvar].max()+offset)
+    if xlims is not None:
+        ax.set_xlim(xlims) #xlims[fly_id])
+    #lg = ax.legend()
+    legh, labels = ax.get_legend_handles_labels()
+    legh1 = [mpl.lines.Line2D([0], [0], color=c, lw=2) for c in [stop_color, laststop_color] ]
+    legh.extend(legh1)
+    ax.legend(handles=legh, labels=['outstrip', 'instrip', 'all stops', 'last stop'],
+              bbox_to_anchor=(1.1, 1), loc='upper left', fontsize=6, frameon=False)
+
+    # polar plot of turn angles at stops
+    ax = fig.add_subplot(1, 2, 2, projection='polar')
+    n1, _, _ = util.circular_hist(ax, np.deg2rad(meanangs_['meandir']), bins=40, 
+                  facecolor=stop_color, density=False, edgecolor='none', alpha=0.9)
+    n2, _, _ = util.circular_hist(ax, np.deg2rad(last_['meandir']), bins=40, 
+                  facecolor=laststop_color, density=False, alpha=.7, edgecolor='none')
+    ylim = max([n1.max(), n2.max()])
+    ax.set_ylim([0, ylim+1])
+    ax.set_xticklabels([])
+
+    # legends
+    axes=[0.85, 0.6, 0.1, 0.1]
+    util.add_colorwheel(fig, cmap=theta_cmap, theta_range=theta_range, axes=axes)
+
+
+    pl.subplots_adjust(left=0.1, wspace=0.5, top=0.8, right=0.85, bottom=0.2)
+    return fig
+
 
 
 # ----------------------------------------------------------------------
@@ -1538,7 +1613,7 @@ def plot_trajectory(df0, odor_bounds=[], ax=None,
         odor_start_ix = df0[df0['instrip']].iloc[0][yvar]
         ax.axhline(y=odor_start_ix, color='w', lw=0.5, linestyle=':')
 
-    ax.legend(bbox_to_anchor=(1,1), loc='upper left', title=hue_varname)
+    ax.legend(bbox_to_anchor=(1,1), loc='upper left', title=hue_varname, frameon=False)
     ax.set_title(title)
     xmax=500
     if center:
