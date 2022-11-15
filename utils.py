@@ -71,6 +71,28 @@ def make_ordinal(n):
 
 
 # ----------------------------------------------------------------------
+# Calculation
+# ----------------------------------------------------------------------
+def rotate_coordinates(x, y, theta):
+    '''
+    Rotate coordinates by theta (in radians).
+
+    Arguments:
+        x (np.array, list) : setof x-coords
+        y (np.array, list) : set of y-coords
+        theta (float) : theta in radians 
+
+    Returns:
+        rotx, roty : transformed coords
+    '''
+    rotx = x*np.cos(theta) + y*np.sin(theta)
+    roty = -x*np.sin(theta) + y*np.cos(theta)
+    return rotx, roty
+
+def fliplr_coordinates(x, y):
+    return x*-1, y
+
+# ----------------------------------------------------------------------
 # Data processing 
 # ----------------------------------------------------------------------
 
@@ -102,6 +124,15 @@ def label_figure(fig, fig_id):
 
 
 def set_sns_style(style='dark'):
+    font_styles = {
+                    'axes.labelsize': 8, # x and y labels
+                    'axes.titlesize': 10, # axis title size
+                    'figure.titlesize': 10,
+                    'xtick.labelsize': 7, # fontsize of tick labels
+                    'ytick.labelsize': 7,  
+                    'legend.fontsize': 6,
+                    'legend.title_fontsize': 7
+        }
     if style=='dark':
         custom_style = {
                     'axes.labelcolor': 'white',
@@ -113,6 +144,7 @@ def set_sns_style(style='dark'):
                     'axes.facecolor': 'black',
                     'axes.grid': False,
                     'figure.facecolor': 'black'}
+        custom_style.update(font_styles)
 
 #        pl.rcParams['figure.facecolor'] = 'black'
 #        pl.rcParams['axes.facecolor'] = 'black'
@@ -120,7 +152,7 @@ def set_sns_style(style='dark'):
 
     pl.rcParams['savefig.dpi'] = 400
 
-def add_colorwheel(fig, cmap='hsv', axes=[0.7, 0.7, 0.3, 0.3], 
+def add_colorwheel(fig, cmap='hsv', axes=[0.7, 0.7, 0.3, 0.3], fontsize=7,
                    theta_range=[-np.pi, np.pi], deg2plot=None, theta_units='rad'):
     display_axes = fig.add_axes(axes, projection='polar')
     # display_axes._direction = max(theta_range) #2*np.pi ## This is a nasty hack - using the hidden field to 
@@ -245,7 +277,7 @@ def circular_hist(ax, x, bins=16, density=True, offset=0, gaps=True, facecolor=[
 
     ax.set_theta_zero_location('N')
     ax.set_theta_direction(-1)  # theta increasing clockwise
-    
+     
     return n, bins, patches
 
 
