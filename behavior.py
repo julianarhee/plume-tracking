@@ -141,6 +141,12 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
     df0['date'] = df0['timestamp'].apply(lambda s: \
             int(datetime.strptime(s.split('-')[0], "%m/%d/%Y").strftime("%Y%m%d")))
 
+    # convert ft_heading to make it continuous and in range (-pi, pi)
+    if 'ft_heading' in df0.columns:
+        p = util.unwrap_and_constrain_angles(df0['ft_heading'].values)
+        df0['ft_heading'] = p 
+
+    # Calculate some additional vars
     if 'instrip' not in df0.columns:
         df0['instrip'] = False
         if mfc_id is not None:
@@ -776,6 +782,21 @@ def smooth_traces_interp(df, xvar='ft_posx', yvar='ft_posy', window_size=13, ret
 
 # checks
 def get_odor_grid_all_flies(df0, odor_width=50, grid_sep=200):
+    '''
+    Wraps get_odor_grid() in a loop for all ddatafiles.
+
+    Arguments:
+        df0 -- _description_
+
+    Keyword Arguments:
+        odor_width -- _description_ (default: {50})
+        grid_sep -- _description_ (default: {200})
+
+    Returns:
+        odor_borders (dict) : 
+            keys are trial_id (e.g., datestr-flyid)
+            values are dicts, with each entry correponding to 1 odor corridor
+    '''
     odor_borders={}
     for trial_id, currdf in df0.groupby(['trial_id']):
         ogrid, in_odor = get_odor_grid(currdf, odor_width=odor_width, grid_sep=grid_sep,
@@ -784,12 +805,9 @@ def get_odor_grid_all_flies(df0, odor_width=50, grid_sep=200):
             print(trial_id, "WARNING: Fly never in odor (cond={})".format(currdf['condition'].unique()))
         try:
             odor_borders.update({trial_id: ogrid})
-            #(odor_xmin, odor_xmax), = ogrid.values()
         except Exception as e:
-            #traceback.print_exc()
             print(e)
             print(ogrid)
-        #odor_borders.update({trial_id: (odor_xmin, odor_xmax)})
 
     return odor_borders
 
@@ -1122,7 +1140,6 @@ def add_rdp_by_bout(df_, epsilon=0.1, xvar='ft_posx', yvar='ft_posy'):
         df_.loc[b_.index, 'rdp_{}'.format(yvar)] = simp[:, 1]
     return df_
 
-
 def get_rdp_distances(df_, rdp_var='rdp_ft_posx'):
     dists_=[]
     for bi, (bnum, b_) in enumerate(df_.groupby('boutnum')):
@@ -1142,39 +1159,51 @@ def get_rdp_distances(df_, rdp_var='rdp_ft_posx'):
 
     return rdp_dists
 
-def plot_overlay_rdp_v_smoothed(b_, ax, xvar='ft_posx', yvar='ft_posy', epsilon=1):
+def plot_overlay_rdp_v_smoothed(b_, ax, xvar='ft_posx', yvar='ft_posy', epsilon=1,
+            normalize_y=False):
 
     if 'rdp_{}'.format(xvar) not in b_.columns:
         add_rdp_by_bout(b_, epsilon=epsilon, xvar=xvar, yvar=yvar)
 
-    rdp_x = 'rdp_{}'.format(xvar)
+    rdp_var = 'rdp_{}'.format(xvar)
     rdp_y = 'rdp_{}'.format(yvar)
-    ax.plot(b_['ft_posx'], b_['ft_posy'], 'w', alpha=1, lw=0.5)
-    ax.plot(b_[b_[rdp_x]][xvar], b_[b_[rdp_y]][yvar], 'r', alpha=1, lw=0.5)
+    offset_raw = b_['ft_posy'].iloc[0] if normalize_y else 0
+    offset_rdp = b_[b_[rdp_var]]['ft_posy'].iloc[0] if normalize_y else 0
     if 'smoothed_ft_posx' in b_.columns:
-        ax.plot(b_['smoothed_ft_posx'], b_['smoothed_ft_posy'], 'cornflowerblue', alpha=0.7)
-    ax.scatter(b_[b_[rdp_x]][xvar], b_[b_[rdp_y]][yvar], 
-               c=b_[b_[rdp_x]]['speed'], alpha=1, s=3)
+        offset_smooth = b_['smoothed_ft_posy'].iloc[0] if normalize_y else 0
 
+    yv = b_['ft_posy'] - offset_raw 
+    yv_rdp = b_[b_[rdp_var]]['ft_posy'] - offset_rdp 
+    if 'smoothed_ft_posy' in b_.columns:
+        yv_smooth = b_['smoothed_ft_posy'] - offset_smooth 
+
+    ax.plot(b_['ft_posx'], yv, 'w', alpha=1, lw=0.5)
+    ax.plot(b_[b_[rdp_var]][xvar], yv_rdp, 'r', alpha=1, lw=0.5)
+    if 'smoothed_ft_posx' in b_.columns:
+        ax.plot(b_['smoothed_ft_posx'], yv_smooth, 'cornflowerblue', alpha=0.7)
+#    ax.scatter(b_[b_[rdp_var]][xvar], b_[b_[rdp_y]][yvar], 
+#               c=b_[b_[rdp_var]]['speed'], alpha=1, s=3)
 
 def plot_overlay_rdp_v_smoothed_multi(df_, boutlist=None, nr=4, nc=6, distvar=None,
+                                sharex=False, sharey=False,
                                 rdp_epsilon=1.0, smooth_window=11, xvar='ft_posx', yvar='ft_posy'):
     if boutlist is None:
         #boutlist = list(np.arange(1, nr*nc))
         nbouts_plot = nr*nc
         boutlist = df_['boutnum'].unique()[0:nbouts_plot]
-    fig, axes = pl.subplots(nr, nc, figsize=(nc*2, nr*1.5))
-    for ax, bnum in zip(axes.flat, boutlist):
-        b_ = df_[(df_['boutnum']==bnum)].copy()
-        plot_overlay_rdp_v_smoothed(b_, ax, xvar=xvar, yvar=yvar)
+    fig, axes = pl.subplots(nr, nc, figsize=(nc*2, nr*1.5), sharex=sharex, sharey=sharey)
+    for bi, bnum in enumerate(boutlist):
+        ax = axes.flat[bi]
+        b_ = df_[(df_['boutnum']==bnum)].copy() 
+        plot_overlay_rdp_v_smoothed(b_, ax, xvar=xvar, yvar=yvar, normalize_y=sharey)
         if distvar is not None:
             dist_traveled = b_[distvar].sum()-b_[distvar].iloc[0]
             ax.set_title('{}: {:.2f}'.format(bnum, dist_traveled))
         else:
             ax.set_title(bnum)
-    for ax in axes.flat:
-        ax.set_aspect('equal')
-        ax.axis('off')
+        for ax in axes.flat:
+            #ax.set_aspect('equal')
+            ax.axis('off')
     legh = [mpl.lines.Line2D([0], [0], color='w', lw=2, label='orig'),
            mpl.lines.Line2D([0], [0], color='r', lw=2, label='RDP ({})'.format(rdp_epsilon))]
     if 'smoothed_ft_posx' in b_.columns: 
@@ -1222,30 +1251,46 @@ def make_continuous(mapvals):
     return map_c
 
 def rdp_to_heading(b_, xvar='ft_posx', yvar='ft_posy', theta_range=(0, 2*np.pi)):
+    '''
+    Calculate vector between each point in RDP-simplified coordinates.
+    Wraps radians to be within (-pi and pi). Values should correspond to 
+    similar operation done to ft_heading values.
 
+    Arguments:
+        b_ (pd.DataFrame) : df corresponding to 1 bout
+        TODO:  do results change a lot if RDP on full trajectory instead of each bout?
+
+    Keyword Arguments:
+        xvar -- _description_ (default: {'ft_posx'})
+        yvar -- _description_ (default: {'ft_posy'})
+        theta_range -- _description_ (default: {(0, 2*np.pi)})
+
+    Returns:
+        _description_
+    '''
     rdp_var ='rdp_{}'.format(xvar)
     #rdp_y ='rdp_{}'.format(yvar)
     xv = b_[b_[rdp_var]][xvar]
     yv = b_[b_[rdp_var]][yvar]
-    if theta_range[0]==0:
-        angles = convert_cw(np.arctan2(np.gradient(xv*3), np.gradient(yv*3)) )
-        assert angles.min().round(1)>=0, "Min ({:.2f}) is not 0".format(angles.min())
-        assert np.ceil(angles.max())>np.pi, "Min ({:.2f}) is not 2pi".format(angles.max())
-    else:
-        print("-np.pi tp pi")
-        angles = np.arctan2(np.gradient(xv*3), np.gradient(yv*3)) 
-        assert theta_range[0]==-np.pi and theta_range[1]==np.pi, "Wrong theta range"
+#    if theta_range[0]==0:
+#        angles = convert_cw(np.arctan2(np.gradient(xv*3), np.gradient(yv*3)) )
+#        assert angles.min().round(1)>=0, "Min ({:.2f}) is not 0".format(angles.min())
+#        assert np.ceil(angles.max())>np.pi, "Min ({:.2f}) is not 2pi".format(angles.max())
+#    else:
+    #print("-np.pi tp pi")
+    angles = np.arctan2(np.gradient(xv*3), np.gradient(yv*3)) 
+    assert theta_range[0]==-np.pi and theta_range[1]==np.pi, "Wrong theta range"
     #assert angles.min().round(1)>=0, "Min ({:.2f}) is not 0".format(angles.min())
     #assert angles.max().round(1)<=round(2*np.pi, 1), "Min ({:.2f}) is not 2pi".format(angles.max())
     # print('cw arctan2: ({:.2f}, {:.2f})'.format(angles.min(), angles.max()))
     #b_['rdp_arctan2'] = None
-    b_.loc[b_[rdp_var], 'rdp_arctan2'] = angles
+    b_.loc[b_[rdp_var], 'rdp_arctan2'] = util.unwrap_and_constrain_angles(angles)
     #b_['rdp_arctan2'] = b_['rdp_arctan2'].astype(float)
     return b_
 
-def mean_heading_across_rdp(b_, xvar='ft_posx', yvar='ft_posy', heading_var='ft_heading', theta_range=(0, 2*np.pi)):
-    rdp_var='rdp_{}'.format(xvar)
-    
+def mean_heading_across_rdp(b_, xvar='ft_posx', yvar='ft_posy', 
+                    heading_var='ft_heading', theta_range=(0, 2*np.pi)):
+    rdp_var='rdp_{}'.format(xvar) 
     ixs = b_[b_[rdp_var]].index.tolist()
     mean_angles=[] 
     for i, ix in enumerate(ixs[0:-1]):
@@ -1255,11 +1300,13 @@ def mean_heading_across_rdp(b_, xvar='ft_posx', yvar='ft_posy', heading_var='ft_
         if i==0:
             mean_angles.append(ang)
     mean_angles = np.array(mean_angles)
-    if theta_range[0]==0: 
-        assert np.floor(mean_angles.min())>=0, "Min ({:.2f}) is not > 0".format(mean_angles.min())
-        assert np.ceil(mean_angles.max())>np.floor(np.pi), "Min ({:.2f}) is not 2pi".format(mean_angles.max())
-    print('mean angles: ({:.2f}, {:.2f})'.format(min(mean_angles), max(mean_angles)))
-    b_.loc[b_[rdp_var], 'mean_angle'] = mean_angles
+
+#    if theta_range[0]==0: 
+#        assert np.floor(mean_angles.min())>=0, "Min ({:.2f}) is not > 0".format(mean_angles.min())
+#        assert np.ceil(mean_angles.max())>np.floor(np.pi), "Min ({:.2f}) is not 2pi".format(mean_angles.max())
+#    print('mean angles: ({:.2f}, {:.2f})'.format(min(mean_angles), max(mean_angles)))
+
+    b_.loc[b_[rdp_var], 'mean_angle'] = util.unwrap_and_constrain_angles(mean_angles)
 
     return b_
 
