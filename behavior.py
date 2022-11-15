@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!n_dir_af/usr/bin/env python3
 # -*- coding:utf-8 -*-
 '''
 File           : behavior.py
@@ -317,7 +317,7 @@ def load_combined_df(src_dir, create_new=False, verbose=False, save_errors=True)
 
         if 'vertical_strip/paired_experiments' in src_dir_temp:
             # update condition names
-            df0.loc[df0['condition']=='light', 'condition'] = 'lightonly'
+            df.loc[df['condition']=='light', 'condition'] = 'lightonly'
 
         # save
         print("Saving combined df to: {}".format(src_dir_temp))
@@ -325,7 +325,54 @@ def load_combined_df(src_dir, create_new=False, verbose=False, save_errors=True)
 
     return df
 
-def check_entry_left(df, entry_ix=0):
+
+def check_entryside_and_flip(df_, odor_width=50, odor_dict={}, verbose=False):
+    '''
+    Check if animal enters on corridor's left or right edge. Flip so that animal 
+    enters on corridor's RIGHT edge (animal's left side). 
+
+    Arguments:
+        df_ -- _description_
+
+    Keyword Arguments:
+        odor_width -- _description_ (default: {50})
+        odor_dict -- _description_ (default: {{}})
+        verbose -- _description_ (default: {False})
+
+    Returns:
+        _description_
+    '''
+    new_borders={}
+    entry_ixs = [int(k[1:]) for k, v in odor_dict.items()]
+    df_copy = df_.copy()
+    df_copy['flipped'] = False
+    for si, entry_ix in enumerate(entry_ixs):
+        #df.loc[start_ix]
+        last_outbout_ix = df_.loc[entry_ix-1].name
+        start_ = df_.iloc[0].name if si==0 else last_outbout_ix
+        stop_ = df_.iloc[-1].name if entry_ix == entry_ixs[-1] else entry_ixs[si+1]-1
+        tmpdf = df_.loc[start_:stop_]
+        oparams = get_odor_params(tmpdf.loc[start_:stop_], odor_width=odor_width, 
+                                        is_grid=True, get_all_borders=False, entry_ix=entry_ix)
+        if verbose:
+            print('... {}: {}'.format(si, oparams['entry_left_edge']))
+        if oparams['entry_left_edge']:
+            # flip it
+            xp, yp = util.fliplr_coordinates(tmpdf['ft_posx'].values, tmpdf['ft_posy'].values)
+                # util.rotate_coordinates(df1['ft_posx'], df1['ft_posy'], -np.pi)
+            df_copy.loc[tmpdf.index, 'ft_posx'] = xp
+            df_copy.loc[tmpdf.index, 'ft_posy'] = yp
+            border_flip1, _ = util.fliplr_coordinates(oparams['odor_boundary'][0], 0) 
+            border_flip2, _ = util.fliplr_coordinates(oparams['odor_boundary'][1], 0)
+            df_copy.loc[tmpdf.index, 'flipped'] = True
+        else:
+            border_flip1, border_flip2 = oparams['odor_boundary']        
+        
+        new_borders.update({'c{}'.format(entry_ix): (border_flip1, border_flip2)})
+            
+    return df_copy, new_borders
+
+def check_entry_left_edge(df, entry_ix=0, return_bool=False):
     '''
     Check whether fly enters from left/right of corridor based on prev tsteps.
 
@@ -336,23 +383,61 @@ def check_entry_left(df, entry_ix=0):
     Returns:
         entry_left (bool) : entered left True, otherwise False
     '''
+    # if start of experiment, 1st odor start centered on animal
+    # so look at 2nd odor bout
+    #try:
+    #if df.iloc[0].name==0:
+    # check first entry *after* odor start that is also UPWIND
+    outbouts_after_entry = df[~df['instrip']].loc[entry_ix:] #.iloc[0].name
+    upwind_before_entry = [b for b, b_ in outbouts_after_entry.groupby(['boutnum']) \
+                            if b_.iloc[-20:]['ft_posy'].diff().sum()>=0]
+    entry_lefts=[]
+    for start_at_this_outbout in upwind_before_entry:
+        #start_at_this_outbout = upwind_before[0]
+        # get subset of bouts
+        try:
+            exit_ix = df[df['boutnum']>=start_at_this_outbout].iloc[0].name
+            df_tmp = df.loc[exit_ix:]
+            test_entry_ix = df_tmp[df_tmp['instrip']].iloc[0].name
+        except IndexError as e: #Exception as e:
+            # this is a second (or later) entry
+            #df_tmp = df.copy()
+            #test_entry_ix = entry_ix
+            continue
+        # if values are increasing, then entering on border's left edge (animal enters to its right)
+        cumsum = df_tmp.loc[test_entry_ix-20:test_entry_ix]['ft_posx'].diff().sum()
+        #cumsum = df.loc[entry_ix-5:entry_ix]['ft_posx'].diff().cumsum().iloc[-1]
+        if cumsum > 0: # entry is from LEFT of strip (values get larger)
+            entry_left_edge=True
+        elif cumsum < 0: # entry is into RIGHT side of strip
+            entry_left_edge=False
+        else:
+            entry_left_edge=None
+        entry_lefts.append((test_entry_ix, entry_left_edge))
 
-    cumsum = df.loc[entry_ix-20:entry_ix]['ft_posx'].diff().cumsum().iloc[-1]
-    if cumsum > 0: # entry is from left of strip (values get larger)
-        entry_left=True
-    elif cumsum < 0:
-        entry_left=False
-    else:
-        entry_left=None
+    entry_vals = [i[1] for i in entry_lefts]
+    try:
+        if sum(entry_vals)/len(entry_vals) > 0.5:
+            entry_left_edge=True
+        elif sum(entry_vals)/len(entry_vals) < 0.5:
+            entry_left_edge=False
+        else:
+            entry_left_edge=None
+    except ZeroDivisionError:
+        entry_left_edge=None
 
-    return entry_left
-    
+    if return_bool:
+        return entry_left_edge, entry_lefts    
+    else: 
+        return entry_left_edge
+ 
 
 def get_odor_params(df, odor_width=50, grid_sep=200, get_all_borders=True,
                     entry_ix=None, is_grid=False, check_odor=False, 
                     mfc_var='mfc2_stpt'):
     '''
     Get odor start times, boundary coords, etc.
+    Note:  df should not start directly ON first entry index if calculate entry dir
 
     Arguments:
         df (pd.DataFrame) : full dataframe (from load_dataframe())
@@ -374,7 +459,7 @@ def get_odor_params(df, odor_width=50, grid_sep=200, get_all_borders=True,
     '''
     if df[df['instrip']].shape[0]==0:
         #print(df.shape)
-        entry_left=False
+        entry_left_edge=None
         odor_xmin = -odor_width/2.
         odor_xmax = odor_width/2.
         odor_start_time = df.iloc[0]['time']
@@ -383,16 +468,16 @@ def get_odor_params(df, odor_width=50, grid_sep=200, get_all_borders=True,
     else:
         if entry_ix is None:
             entry_ix = df[df['instrip']].iloc[0].name
-        entry_left = check_entry_left(df, entry_ix=entry_ix)
-    
+        entry_left_edge, entry_lefts = check_entry_left_edge(df, entry_ix=entry_ix, return_bool=True)
+
         currdf = df.loc[entry_ix:].copy()
-        if is_grid and entry_left is not None: # entry_left must be true or false
+        if is_grid and entry_left_edge is not None: # entry_left must be true or false
             if get_all_borders:
                 ogrid, in_odor = get_odor_grid(currdf, odor_width=odor_width, grid_sep=grid_sep,
                                     use_crossings=True, verbose=False)
                 odor_borders = list(ogrid.values())
             else:
-                if entry_left:
+                if entry_left_edge:
                     odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] 
                     odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] + odor_width
                 else: # entered right, so entry point is largest val
@@ -419,7 +504,7 @@ def get_odor_params(df, odor_width=50, grid_sep=200, get_all_borders=True,
                     'odor_start_time': odor_start_time,
                     'odor_boundary': odor_borders, #(odor_xmin, odor_xmax),
                     'odor_start_pos': (odor_start_posx, odor_start_posy),
-                    'entry_left': entry_left
+                    'entry_left_edge': entry_left_edge
                     } 
 
     return odor_params
@@ -448,7 +533,7 @@ def process_df(df0, xvar='ft_posx', yvar='ft_posy',
             df_ = smooth_traces(df_, window_size=window_size, return_same=True)
         dlist.append(df_)
 
-    DF=pd.concat(dlist, axis=0).reset_index(drop=True)
+    DF=pd.concat(dlist, axis=0) #.reset_index(drop=True)
 
     return DF
 
@@ -708,6 +793,45 @@ def get_odor_grid_all_flies(df0, odor_width=50, grid_sep=200):
 
     return odor_borders
 
+def get_odor_grid(df, odor_width=10, grid_sep=200, use_crossings=True,
+                    use_mean=True, verbose=True):
+    if df[df['instrip']].shape[0]==0:
+        # fly never in odor
+        if verbose:
+            print("WARNING: Fly is never in odor, using default corridor.")
+        curr_odor_xmin = -odor_width/2.
+        curr_odor_xmax = odor_width/2.
+        odor_grid = {'c0': (curr_odor_xmin, curr_odor_xmax)}
+        odor_flag = False
+    else:
+        odor_grid = find_odor_grid(df, odor_width=odor_width, grid_sep=grid_sep)
+        odor_grid = check_odor_grid(df, odor_grid, odor_width=odor_width, grid_sep=grid_sep, 
+                        use_crossings=use_crossings, use_mean=use_mean, verbose=verbose)
+        odor_flag = True
+
+    return odor_grid, odor_flag
+
+
+def find_borders(df, strip_width = 10, strip_spacing = 200):
+    '''from andy'''
+    from scipy import signal as sg
+    x = df.ft_posx
+    y = df.ft_posy
+    x_idx = df.index[df.mfc2_stpt>0.01].tolist()[0]
+    x0 = df.ft_posx[x_idx] # First point where the odor turn on
+    duty = strip_width/(strip_width+strip_spacing)
+    freq = 1/(strip_width+strip_spacing)
+    x_temp = np.linspace(min(x)-strip_width, max(x)+strip_width, 1000)
+    mult = 0.5*sg.square(2*np.pi*freq*(x_temp+strip_width/2-x0), duty=duty)+0.5
+    x_borders,_ = sg.find_peaks(np.abs(np.gradient(mult)))
+    x_borders = x_temp[x_borders]
+    #y_borders = np.array([y.iloc[x_idx], max(y)])
+    #t_borders = np.array([min(t), max(t)])
+    #all_x_borders = [np.array([x_borders[i], x_borders[i]]) for i, _ in enumerate(x_borders)]
+    #all_y_borders = [y_borders for i,_ in enumerate(x_borders)]
+    #all_t_borders = [t_borders for i,_ in enumerate(x_borders)]
+    return x_borders #all_x_borders, all_y_borders
+
  
 def find_odor_grid(df, odor_width=10, grid_sep=200): #use_crossings=True,
 #                   use_mean=True, verbose=True):
@@ -739,7 +863,6 @@ def find_odor_grid(df, odor_width=10, grid_sep=200): #use_crossings=True,
     # nextgrid_df = indf[ (indf['ft_posx']>(curr_odor_xmax.round(2)+grid_sep*0.5) | ((indf['ft_posx']<curr_odor_xmin.round(2)-grid_sep*0.5))].copy()
     nextgrid_df = indf[ (indf['ft_posx']>np.ceil(curr_odor_xmax)+grid_sep*0.5) \
                    | ((indf['ft_posx']<np.floor(curr_odor_xmin)-grid_sep*0.5)) ].copy()
-
     # loop through the remainder of odor strips in experiment until all strips found
     while nextgrid_df.shape[0] > 0:
         # get odor params of next corridor
@@ -756,23 +879,6 @@ def find_odor_grid(df, odor_width=10, grid_sep=200): #use_crossings=True,
 
     return odor_grid
 
-def get_odor_grid(df, odor_width=10, grid_sep=200, use_crossings=True,
-                    use_mean=True, verbose=True):
-    if df[df['instrip']].shape[0]==0:
-        # fly never in odor
-        if verbose:
-            print("WARNING: Fly is never in odor, using default corridor.")
-        curr_odor_xmin = -odor_width/2.
-        curr_odor_xmax = odor_width/2.
-        odor_grid = {'c0': (curr_odor_xmin, curr_odor_xmax)}
-        odor_flag = False
-    else:
-        odor_grid = find_odor_grid(df, odor_width=odor_width, grid_sep=grid_sep)
-        odor_grid = check_odor_grid(df, odor_grid, odor_width=odor_width, grid_sep=grid_sep, 
-                        use_crossings=use_crossings, use_mean=use_mean, verbose=verbose)
-        odor_flag = True
-
-    return odor_grid, odor_flag
 
 def check_odor_grid(df, odor_grid, odor_width=10, grid_sep=200, use_crossings=True,
                     use_mean=True, verbose=True):
@@ -810,8 +916,8 @@ def check_odor_grid(df, odor_grid, odor_width=10, grid_sep=200, use_crossings=Tr
                                                 ix=curr_grid_ix, odor_width=odor_width, grid_sep=grid_sep, 
                                                 use_mean=use_mean)
                 if verbose:
-                    print('... {}: min {:.2f} vs {:.2f}'.format(cnum, curr_odor_xmin, traveled_xmin))
-                    print('... {}: max {:.2f} vs {:.2f}'.format(cnum, curr_odor_xmax, traveled_xmax))
+                    print('... {}: min {:.2f} vs traveled {:.2f}'.format(cnum, curr_odor_xmin, traveled_xmin))
+                    print('... {}: max {:.2f} vs traveled {:.2f}'.format(cnum, curr_odor_xmax, traveled_xmax))
                     print("... True diff: {:.2f}".format(traveled_xmax - traveled_xmin))
             else:
                 traveled_xmin = curr_odor_xmin
@@ -819,7 +925,8 @@ def check_odor_grid(df, odor_grid, odor_width=10, grid_sep=200, use_crossings=Tr
                 if verbose:
                     print("... this fly never crossed the edge")
             ctr = curr_odor_xmin + (curr_odor_xmax - curr_odor_xmin)/2.
-
+            if verbose:
+                print("... Estimated ctr is {:.2f}".format(ctr))
             if not crossed_edge:
                 # at start of odor, animal doesnt move
                 print("... Using default odor min/max, animal did not move in odor")
@@ -1088,117 +1195,208 @@ def convert_cw(v):
     #vv = (180. / np.pi) * v
     return vv  #(180 / math.pi) * angle
 
+def convert_ccw(v):
+    vv = v.copy()
+    vv[v>0] -= 2*np.pi
+#     if angle > 0:
+#         angle -= 2 * math.pi
+    #vv = (180 / np.pi) * v # rad to deg conversion
+    return vv #v #(180 / math.pi) * angle  # rad to deg conversion
 
-def examine_heading_in_bout(b_, theta_range=(0, 2*np.pi), xvar='ft_posx', yvar='ft_posy'):
-    fig, axn = pl.subplots(2, 2, figsize=(8, 6), sharex=True, sharey=True)
-    ax=axn[0, 0]
-    sns.scatterplot(data=b_, x="ft_posx", y="ft_posy", ax=ax,
-                    hue='time', s=4, edgecolor='none', palette='viridis')
-    ax.legend(bbox_to_anchor=(-0.1, 1.4), ncols=2, loc='upper left', title='time')
-    # ---------------------
-    ax=axn[0, 1]
-    sns.scatterplot(data=b_, x="ft_posx", y="ft_posy", ax=ax,
-                    hue='ft_heading_deg', s=4, edgecolor='none', palette='hsv')
-    ax.legend(bbox_to_anchor=(-0.1, 1.4), ncols=2, loc='upper left', title='ft_heading')
-    #theta_range = (0, 2*np.pi)
-    cax = util.add_colorwheel(fig, axes=[0.75, 0.5, 0.25, 0.25], theta_range=theta_range, cmap='hsv') 
-    # ---------------------
-    ax=axn[1, 0]; ax.set_title('arctan2')
-    rdp_x ='rdp_{}'.format(xvar)
-    rdp_y ='rdp_{}'.format(yvar)
-    xv = b_[b_[rdp_x]][xvar]
-    yv = b_[b_[rdp_y]][yvar]
-    angles = convert_cw(np.arctan2(np.gradient(xv*3), np.gradient(yv*3)) )
-    assert angles.min().round(1)==0, "Min ({:.2f}) is not 0".format(angles.min())
-    assert angles.max().round(1)==round(2*np.pi, 1), "Min ({:.2f}) is not 2pi".format(angles.max())
+def convert_ft(v):
+    vv = v.copy()
+    vv[v<0] += 2*np.pi
+    vv[v>2*np.pi] -= 2*np.pi
+    return vv #v #(180 / math.pi) * angle  # rad to deg conversion
+
+def convert_heading_csv(v):
+    vv = v.copy()
+    #vv[v<0] += 2*np.pi
+    vv[v>2*np.pi] -= 2*np.pi
+    return vv #v #(180 / math.pi) * angle  # rad to deg conversion
+
+def make_continuous(mapvals):
+    map_c = mapvals.copy()
+    map_c = -1*map_c
+    #map_c = map_c % (2*np.pi)
+    return map_c
+
+def rdp_to_heading(b_, xvar='ft_posx', yvar='ft_posy', theta_range=(0, 2*np.pi)):
+
+    rdp_var ='rdp_{}'.format(xvar)
+    #rdp_y ='rdp_{}'.format(yvar)
+    xv = b_[b_[rdp_var]][xvar]
+    yv = b_[b_[rdp_var]][yvar]
+    if theta_range[0]==0:
+        angles = convert_cw(np.arctan2(np.gradient(xv*3), np.gradient(yv*3)) )
+        assert angles.min().round(1)>=0, "Min ({:.2f}) is not 0".format(angles.min())
+        assert np.ceil(angles.max())>np.pi, "Min ({:.2f}) is not 2pi".format(angles.max())
+    else:
+        print("-np.pi tp pi")
+        angles = np.arctan2(np.gradient(xv*3), np.gradient(yv*3)) 
+        assert theta_range[0]==-np.pi and theta_range[1]==np.pi, "Wrong theta range"
+    #assert angles.min().round(1)>=0, "Min ({:.2f}) is not 0".format(angles.min())
+    #assert angles.max().round(1)<=round(2*np.pi, 1), "Min ({:.2f}) is not 2pi".format(angles.max())
     # print('cw arctan2: ({:.2f}, {:.2f})'.format(angles.min(), angles.max()))
-    # -- 
-    rdp_var = rdp_x
-    ax.plot(b_[xvar], b_[yvar], 'w', lw=0.5)
-    ax.scatter(b_[b_[rdp_x]][xvar], b_[b_[rdp_y]][yvar], 
-            c=angles, cmap='hsv')
-    xy = b_[b_[rdp_var]][[xvar, yvar]].values
-    xy = xy.reshape(-1, 1, 2)
-    segments = np.hstack([xy[:-1], xy[1:]])
-    coll = mpl.collections.LineCollection(segments, cmap='hsv') #plt.cm.gist_ncar)
-    coll.set_array(angles) #np.random.random(xy.shape[0]))
-    ax.add_collection(coll)
-    # ---------------------
-    # mean angles
+    #b_['rdp_arctan2'] = None
+    b_.loc[b_[rdp_var], 'rdp_arctan2'] = angles
+    #b_['rdp_arctan2'] = b_['rdp_arctan2'].astype(float)
+    return b_
+
+def mean_heading_across_rdp(b_, xvar='ft_posx', yvar='ft_posy', heading_var='ft_heading', theta_range=(0, 2*np.pi)):
+    rdp_var='rdp_{}'.format(xvar)
+    
     ixs = b_[b_[rdp_var]].index.tolist()
-    mean_angles=[] #sts.circmean(b_.loc[ix:ixs[i+1]]['ft_heading'], high=2*np.pi, low=0)]
+    mean_angles=[] 
     for i, ix in enumerate(ixs[0:-1]):
-        ang = sts.circmean(b_.loc[ix:ixs[i+1]]['ft_heading'], high=2*np.pi, low=0)
+        ang = sts.circmean(b_.loc[ix:ixs[i+1]][heading_var], \
+                        high=theta_range[1], low=theta_range[0]) #high=2*np.pi, low=0)
         mean_angles.append(ang)
         if i==0:
             mean_angles.append(ang)
     mean_angles = np.array(mean_angles)
-    assert mean_angles.min().round(1)==0, "Min ({:.2f}) is not 0".format(mean_angles.min())
-    assert mean_angles.max().round(1)==round(2*np.pi, 1), "Min ({:.2f}) is not 2pi".format(mean_angles.max())
-    # print('mean angles: ({:.2f}, {:.2f})'.format(min(mean_angles), max(mean_angles)))
-    # ---
+    if theta_range[0]==0: 
+        assert np.floor(mean_angles.min())>=0, "Min ({:.2f}) is not > 0".format(mean_angles.min())
+        assert np.ceil(mean_angles.max())>np.floor(np.pi), "Min ({:.2f}) is not 2pi".format(mean_angles.max())
+    print('mean angles: ({:.2f}, {:.2f})'.format(min(mean_angles), max(mean_angles)))
+    b_.loc[b_[rdp_var], 'mean_angle'] = mean_angles
+
+    return b_
+
+def examine_heading_in_bout(b_, theta_range=(0, 2*np.pi), xvar='ft_posx', yvar='ft_posy',
+                        heading_var_og='ft_heading', heading_var='ft_heading', theta_cmap='hsv', 
+                        leg_size=0.1, show_angles=False):
+    fig, axn = pl.subplots(2, 2, figsize=(8, 6), sharex=True, sharey=True)
+    ax=axn[0, 0]
+    sns.scatterplot(data=b_, x="ft_posx", y="ft_posy", ax=ax,
+                    hue='time', s=4, edgecolor='none', palette='viridis')
+    ax.legend(bbox_to_anchor=(-0.1, 1.01), ncols=2, loc='lower left', title='time')
+    # --------------------------------------------------------- 
+    # plot given heading (from ft, or wherever validating to)
+    # ---------------------------------------------------------
+    ax=axn[0, 1]
+    sns.scatterplot(data=b_, x="ft_posx", y="ft_posy", ax=ax,
+                    hue=heading_var_og, s=5, edgecolor='none', palette=theta_cmap,
+                    hue_norm=theta_range) #tuple(np.rad2deg(theta_range)))
+    ax.legend(bbox_to_anchor=(-0.1, 1.01), ncols=2, loc='lower left', title=heading_var_og)
+    cax = util.add_colorwheel(fig, axes=[0.75, 0.7, leg_size, leg_size], 
+                    theta_range=theta_range, cmap=theta_cmap) 
+    # ---------------------------------------------------------
+    # plot calculated direction vectors 
+    # ---------------------------------------------------------
+    norm = mpl.colors.Normalize(theta_range[0], theta_range[1])
+    ax=axn[1, 0]; ax.set_title('rdp-arctan2')
+    b_ = rdp_to_heading(b_, xvar='ft_posx', yvar='ft_posy', theta_range=theta_range)
+    rdp_var ='rdp_{}'.format(xvar)
+    # -- 
+    ax.plot(b_[xvar], b_[yvar], 'w', lw=0.5)
+    ax = plot_bout(b_[b_[rdp_var]], ax, hue_var='rdp_arctan2', cmap=theta_cmap, norm=norm,
+                markersize=25, plot_legend=show_angles)
+    ax = add_colored_lines(b_[b_[rdp_var]], ax, hue_var='rdp_arctan2', cmap=theta_cmap, norm=norm)
+    # ---------------------------------------------------------
+    # mean angles
+    # ---------------------------------------------------------
     ax=axn[1,1]; ax.set_title('mean angles')
     ax.plot(b_[xvar], b_[yvar], 'w', lw=0.5)
-    ax.scatter(b_[b_[rdp_x]][xvar], b_[b_[rdp_y]][yvar], 
-            c=mean_angles, cmap='hsv')
-    xy = b_[b_[rdp_var]][[xvar, yvar]].values
-    xy = xy.reshape(-1, 1, 2)
-    segments = np.hstack([xy[:-1], xy[1:]])
-    col2 = mpl.collections.LineCollection(segments, cmap='hsv') #plt.cm.gist_ncar)
-    col2.set_array(mean_angles) #np.random.random(xy.shape[0]))
-    ax.add_collection(col2)
+    b_ = mean_heading_across_rdp(b_, heading_var=heading_var, theta_range=theta_range)
+    ax = plot_bout(b_[b_[rdp_var]], ax, hue_var='mean_angle', norm=norm, cmap=theta_cmap,
+                markersize=25, plot_legend=show_angles)
+    ax = add_colored_lines(b_[b_[rdp_var]], ax, hue_var='mean_angle', cmap=theta_cmap, norm=norm)
+
     return fig
 
+def plot_bout(b_, ax, xvar='ft_posx', yvar='ft_posy', hue_var='time', 
+                norm=None, cmap='viridis', hue_title=None, alpha=0.7, 
+                plot_legend=True, plot_cbar=False, ncols=1, markersize=10):
 
-def examine_heading_at_stops(b_, xvar='ft_posx', yvar='ft_posy'):
-    fig, axn = pl.subplots(1, 3, figsize=(9, 4), sharex=True, sharey=True)
+    if hue_title is None:
+        hue_title = hue_var
+    fig = ax.figure
+
+    #sns.scatterplot(data=b_, x="ft_posx", y="ft_posy", ax=ax,
+    #                hue='ft_heading_deg', s=4, edgecolor='none', palette=theta_cmap,
+    #                hue_norm=tuple(np.rad2deg(theta_range)))
+
+    sns.scatterplot(data=b_, x=xvar, y=yvar, ax=ax, alpha=alpha,
+                    hue=hue_var, s=markersize, edgecolor='none', 
+                    palette=cmap, hue_norm=norm)#, legend=False)
+    if plot_legend:
+        if plot_cbar:
+            ax.legend_.remove()
+            sm =  mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+            sm.set_array([])
+            cbar = fig.colorbar(sm, ax=ax)
+            cbar.ax.set_title(hue_title, fontsize=10)
+            cbar.ax.tick_params(labelsize=10)
+        else:
+            leg = ax.legend(bbox_to_anchor=(1, 1.), ncols=ncols, loc='upper left', \
+                  title=hue_title, fontsize=6)
+            ax.get_legend()._legend_box.align = "left"
+            pl.setp(leg.get_title(),fontsize='x-small')
+    else:
+        ax.legend_.remove()
+
+    return ax
+
+def add_colored_lines(b_, ax, xvar='ft_posx', yvar='ft_posy', 
+                    hue_var='heading', cmap='hsv', norm=None):
+    if norm is None:
+        mpl.colors.Normalize(theta_range[0], theta_range[1])
+    xy = b_[[xvar, yvar]].values
+    xy = xy.reshape(-1, 1, 2)
+    huev = b_[hue_var].values
+    #print(huev.dtype)
+    segments = np.hstack([xy[:-1], xy[1:]])
+    coll = mpl.collections.LineCollection(segments, cmap=cmap, norm=norm) #plt.cm.gist_ncar)
+    coll.set_array(huev) #np.random.random(xy.shape[0]))
+    ax.add_collection(coll)
+    return ax
+
+def examine_heading_at_stops(b_, xvar='ft_posx', yvar='ft_posy',
+                    theta_range=(0, 2*np.pi), theta_cmap='hsv', show_angles=False):
+    fig, axn = pl.subplots(1, 4, figsize=(10, 4), sharex=True, sharey=True)
     ax=axn[0]
     cmap = pl.get_cmap("viridis")
     b_['time'] -= b_['time'].iloc[0]
     norm = pl.Normalize(b_['time'].min(), b_['time'].max())
-    sns.scatterplot(data=b_, x="ft_posx", y="ft_posy", ax=ax,
-                    hue='time', s=3, edgecolor='none', palette=cmap, legend=False)
-    #ax.legend(bbox_to_anchor=(-0.2, 1.), ncols=2, loc='lower left', title='time')
-    sm =  mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
-    sm.set_array([])
-    cbar = fig.colorbar(sm, ax=ax)
-    cbar.ax.set_title("time", fontsize=10)
-    cbar.ax.tick_params(labelsize=10)
+    hue_title = 'time'    
+    plot_bout(b_, ax, hue_var='time', norm=norm, cmap='viridis', 
+                hue_title=hue_title, plot_cbar=True)
     # ---------------------
     ax=axn[1]
+    cmap = pl.get_cmap("magma")
+    norm = pl.Normalize(b_['speed'].min(), b_['speed'].max())
+    plot_bout(b_, ax, hue_var='speed', norm=norm, cmap=cmap, 
+                hue_title=None, plot_cbar=True)
+    # -------------------------- 
+    ax=axn[2]
     if b_.shape[0]>10000:
         skip_every=20
         print("skipping some")
     else:
         skip_every=1
-    sns.scatterplot(data=b_.iloc[0::skip_every], x="smoothed_ft_posx", y="smoothed_ft_posy", ax=ax,
-                    hue='stopped', s=5, edgecolor='none', palette={True: 'r', False: 'w'}, alpha=0.5)
+    palette={True: 'r', False: 'w'}
     n_stops_in_bout = len(b_[b_['stopped']]['stopboutnum'].unique())
-    leg = ax.legend(bbox_to_anchor=(1, 1.), ncols=1, loc='upper left', \
-              title='stopped (n={})'.format(n_stops_in_bout), fontsize=6)
-    ax.get_legend()._legend_box.align = "left"
-    pl.setp(leg.get_title(),fontsize='x-small')
+    hue_title =  'stopped (n={})'.format(n_stops_in_bout)
+    ax = plot_bout(b_, ax, hue_var='stopped', xvar='ft_posx', yvar='ft_posy',
+                cmap=palette, hue_title=hue_title, ncols=1, alpha=0.5, plot_legend=True)
     # ---------------------
-    ax=axn[2]; #ax.set_title('rdp-heading')
-    rdp_x ='rdp_{}'.format(xvar)
-    rdp_y ='rdp_{}'.format(yvar)
-    xv = b_[b_[rdp_x]][xvar]
-    yv = b_[b_[rdp_y]][yvar]
-    angles = convert_cw(np.arctan2(np.gradient(xv*3), np.gradient(yv*3)) )
-    # -- 
+    ax=axn[3]; #ax.set_title('rdp-heading')
+    theta_norm = mpl.colors.Normalize(theta_range[0], theta_range[1])
+    b_ = rdp_to_heading(b_, xvar='ft_posx', yvar='ft_posy', theta_range=theta_range)
+    rdp_var ='rdp_{}'.format(xvar)
     ax.plot(b_[xvar], b_[yvar], 'w', lw=0.5)
-    ax.scatter(b_[b_[rdp_x]][xvar], b_[b_[rdp_y]][yvar], 
-            c=angles, cmap='hsv', s=4) 
-    xy = b_[b_[rdp_x]][[xvar, yvar]].values
-    xy = xy.reshape(-1, 1, 2)
-    segments = np.hstack([xy[:-1], xy[1:]])
-    coll = mpl.collections.LineCollection(segments, cmap='hsv') #plt.cm.gist_ncar)
-    coll.set_array(angles) #np.random.random(xy.shape[0]))
-    ax.add_collection(coll)
+    b_['rdp_arctan2_deg'] = np.rad2deg(b_['rdp_arctan2'])
+    ax = plot_bout(b_[b_[rdp_var]], ax, xvar='ft_posx', yvar='ft_posy', 
+                hue_var='rdp_arctan2', norm=theta_norm, cmap=theta_cmap,
+                markersize=20, plot_legend=show_angles)
+    if show_angles:
+        ax.legend(bbox_to_anchor=(1,1.1), loc='lower left')
+    ax = add_colored_lines(b_[b_[rdp_var]], ax, hue_var='rdp_arctan2', cmap=theta_cmap, norm=theta_norm)
+    # ------
     # legend
-    theta_range = (0, 2*np.pi)
-    cax = util.add_colorwheel(fig, axes=[0.8, 0.5, 0.2, 0.2], theta_range=theta_range, cmap='hsv') 
-    cax.set_title('rdp-heading', fontsize=10)
+    cax = util.add_colorwheel(fig, axes=[0.8, 0.6, 0.1, 0.1], theta_range=theta_range, cmap='hsv') 
+    cax.set_title('rdp-heading', fontsize=7)
     # -----
     pl.subplots_adjust(right=0.8, top=0.7, wspace=0.8, bottom=0.2, left=0.1)
 
@@ -1207,7 +1405,7 @@ def examine_heading_at_stops(b_, xvar='ft_posx', yvar='ft_posy'):
 
 # data processing
 def get_speed_and_stops(b_, speed_thresh=1.0, stopdur_thresh=0.5,
-                        xvar='smoothed_ft_posx', yvar='smoothed_ft_posy'):
+                        xvar='ft_posx', yvar='ft_posy'):
     b_ = calculate_speed(b_, xvar=xvar, yvar=yvar)
     b_ = calculate_stops(b_, stop_thresh=speed_thresh, speed_varname='speed')
     b_ = parse_bouts(b_, count_varname='stopped', bout_varname='stopboutnum')
@@ -1215,7 +1413,8 @@ def get_speed_and_stops(b_, speed_thresh=1.0, stopdur_thresh=0.5,
                                count_varname='stopped', bout_varname='stopboutnum')
     return b_
 
-def mean_dir_after_stop(df, speed_thresh=1.0, stopdur_thresh=0.5):
+def mean_dir_after_stop(df, heading_var='ft_heading', speed_thresh=1.0, stopdur_thresh=0.5,
+                    theta_range=(0, 2*np.pi)):
     d_list = []
     i=0
     for bnum, b_ in df.groupby('boutnum'):
@@ -1233,7 +1432,8 @@ def mean_dir_after_stop(df, speed_thresh=1.0, stopdur_thresh=0.5):
                 'boutnum': bnum,
                 'crosswind_dist': xwind_dist,
                 'stopboutnum': snum,
-                'meandir': np.rad2deg(sts.circmean(b_[b_['stopboutnum']==(snum+1)]['ft_heading']))},
+                'meandir': np.rad2deg(sts.circmean(b_[b_['stopboutnum']==(snum+1)][heading_var],\
+                                high=theta_range[1], low=theta_range[0]))},
                 index=[i]
             )
             i+=1
@@ -1271,22 +1471,24 @@ def plot_trajectory_from_file(fpath, parse_info=False,
     return ax
 
 def plot_trajectory(df0, odor_bounds=[], ax=None,
+        xvar='ft_posx', yvar='ft_posy',
         hue_varname='instrip', palette={True: 'r', False: 'w'},
         start_at_odor = True, odor_lc='lightgray', odor_lw=0.5, title='',
-        markersize=0.5, center=True):
+        markersize=0.5, center=True, plot_legend=True):
 
     # ---------------------------------------------------------------------
     if ax is None: 
         fig, ax = pl.subplots()
     if not isinstance(odor_bounds, list):
         odor_bounds = [odor_bounds]
-    sns.scatterplot(data=df0, x="ft_posx", y="ft_posy", ax=ax, 
-                    hue=hue_varname, s=markersize, edgecolor='none', palette=palette)
+    sns.scatterplot(data=df0, x=xvar, y=yvar, ax=ax, 
+                    hue=hue_varname, s=markersize, edgecolor='none', palette=palette,
+                    legend=plot_legend)
     for (odor_xmin, odor_xmax) in odor_bounds:
         plot_odor_corridor(ax, odor_xmin=odor_xmin, odor_xmax=odor_xmax)
 
     if df0[df0['instrip']].shape[0]>0:
-        odor_start_ix = df0[df0['instrip']].iloc[0]['ft_posy']
+        odor_start_ix = df0[df0['instrip']].iloc[0][yvar]
         ax.axhline(y=odor_start_ix, color='w', lw=0.5, linestyle=':')
 
     ax.legend(bbox_to_anchor=(1,1), loc='upper left', title=hue_varname)
@@ -1295,7 +1497,7 @@ def plot_trajectory(df0, odor_bounds=[], ax=None,
     if center:
         try:
             # Center corridor
-            xmax = np.ceil(df0['ft_posx'].dropna().abs().max())
+            xmax = np.ceil(df0[xvar].dropna().abs().max())
             ax.set_xlim([-xmax-10, xmax+10])
         except ValueError as e:
             xmax = 500
