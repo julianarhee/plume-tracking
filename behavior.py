@@ -565,6 +565,9 @@ def calculate_turn_angle(df, xvar='ft_posx', yvar='ft_posy'):
     return df
 
 def calculate_speed(df0, xvar='ft_posx', yvar='ft_posy'):
+    '''
+    Calculate speed as gradient/time. Blind to bouts.
+    '''
     xv = np.gradient(df0[xvar]) #/df0['time'].diff().mean()
     yv = np.gradient(df0[yvar]) #/df0['time'].diff().mean()
     tv = np.gradient(df0['time'])
@@ -1462,6 +1465,54 @@ def examine_heading_at_stops(b_, xvar='ft_posx', yvar='ft_posy',
     pl.subplots_adjust(right=0.8, top=0.7, wspace=0.8, bottom=0.2, left=0.1)
 
     return fig
+
+def examine_heading_at_stops_vectors(b_, xvar='ft_posx', yvar='ft_posy',
+                    theta_range=(-np.pi, np.pi), theta_cmap='hsv', show_angles=False, scale=1.5):
+    fig, axn = pl.subplots(1, 3, figsize=(8, 4), sharex=True, sharey=True)
+    # ---------------------
+    ax=axn[0]
+    vmin, vmax = b_['speed'].min(), b_['speed'].max()
+    util.plot_vector_path(ax, b_[xvar].values, b_[yvar].values, 
+                      b_['speed'].values, vmin=vmin, vmax=vmax, scale=scale)
+    # -------------------------- 
+    ax=axn[1]
+    if b_.shape[0]>10000:
+        skip_every=20
+        print("skipping some")
+    else:
+        skip_every=1
+    palette={True: 'r', False: 'w'}
+    n_stops_in_bout = len(b_[b_['stopped']]['stopboutnum'].unique())
+    hue_title =  'stopped (n={})'.format(n_stops_in_bout)
+    ax = plot_bout(b_.iloc[0::skip_every], ax, hue_var='stopped', xvar='ft_posx', yvar='ft_posy',
+                cmap=palette, hue_title=hue_title, ncols=1, alpha=0.5, plot_legend=True)
+    # ---------------------
+    ax=axn[2]; #ax.set_title('rdp-heading')
+    theta_norm = mpl.colors.Normalize(theta_range[0], theta_range[1])
+    b_ = rdp_to_heading(b_, xvar='ft_posx', yvar='ft_posy', theta_range=theta_range)
+    rdp_var ='rdp_{}'.format(xvar)
+    ax.plot(b_[xvar], b_[yvar], 'w', lw=0.5)
+    b_['rdp_arctan2_deg'] = np.rad2deg(b_['rdp_arctan2'])
+    ax = plot_bout(b_[b_[rdp_var]], ax, xvar='ft_posx', yvar='ft_posy', 
+                hue_var='rdp_arctan2', norm=theta_norm, cmap=theta_cmap,
+                markersize=20, plot_legend=show_angles)
+    if show_angles:
+        ax.legend(bbox_to_anchor=(1,1), loc='upper left', fontsize=6)
+    ax = add_colored_lines(b_[b_[rdp_var]], ax, hue_var='rdp_arctan2', cmap=theta_cmap, norm=theta_norm)
+    # ------
+    # legend
+    leg_size=0.1
+    wheel_axis = [0.8, 0.3, leg_size, leg_size] if show_angles else [0.8, 0.6, leg_size, leg_size]
+    cax = util.add_colorwheel(fig, axes=wheel_axis, 
+                    theta_range=theta_range, cmap=theta_cmap) 
+    #cax = util.add_colorwheel(fig, axes=[0.8, 0.6, 0.1, 0.1], theta_range=theta_range, cmap='hsv') 
+    cax.set_title('rdp-heading', fontsize=7)
+    # -----
+    pl.subplots_adjust(right=0.8, top=0.7, wspace=0.6, bottom=0.2, left=0.1)
+
+    return fig
+
+
 
 
 # data processing
