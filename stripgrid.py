@@ -42,9 +42,9 @@ def main():
 
     parser.add_argument('-E', '--experiment', type=str, default='',
         help='experiment name Example: pam-activation/20221031')
-    parser.add_argument('-w', '--odor_width', type=float, default=10,
+    parser.add_argument('-w', '--strip_width', type=float, default=10,
         help='odor width, mm (default: 10)')
-    parser.add_argument('-s', '--grid_sep', type=float, default=200,
+    parser.add_argument('-s', '--strip_sep', type=float, default=200,
         help='grid separation, mm (default: 200)')
     parser.add_argument('--plotgroup', type=bool, default=False,
         help='plot all flies in 1 figure')
@@ -62,8 +62,8 @@ def main():
     #datestr = args.datestr
     dstdir = args.dstdir 
     verbose = args.verbose
-    odor_width = args.odor_width
-    grid_sep = args.grid_sep
+    strip_width = args.strip_width
+    strip_sep = args.strip_sep
 
     plot_group = args.plotgroup
     start_at_odor = False
@@ -75,8 +75,8 @@ def main():
 #    experiment = 'stripgrid'
 #    session = '20221102'
 #
-#    odor_width=10
-#    grid_sep=200
+#    strip_width=10
+#    strip_sep=200
 #    plot_group=False
 #    verbose=False
 
@@ -120,7 +120,7 @@ def main():
     for trial_id, currdf in df0.groupby(['trial_id']):
         print(trial_id) #, ogrid)
         ogrid = butil.get_odor_grid(currdf, 
-                                    odor_width=odor_width, grid_sep=grid_sep,
+                                    strip_width=strip_width, strip_sep=strip_sep,
                                     use_crossings=True, verbose=False)
         odor_borders[trial_id] = list(ogrid.values())
 

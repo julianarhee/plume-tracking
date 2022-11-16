@@ -332,7 +332,7 @@ def load_combined_df(src_dir, create_new=False, verbose=False, save_errors=True)
     return df
 
 
-def check_entryside_and_flip(df_, odor_width=50, odor_dict={}, verbose=False):
+def check_entryside_and_flip(df_, strip_width=50, odor_dict={}, verbose=False):
     '''
     Check if animal enters on corridor's left or right edge. Flip so that animal 
     enters on corridor's RIGHT edge (animal's left side). 
@@ -341,7 +341,7 @@ def check_entryside_and_flip(df_, odor_width=50, odor_dict={}, verbose=False):
         df_ -- _description_
 
     Keyword Arguments:
-        odor_width -- _description_ (default: {50})
+        strip_width -- _description_ (default: {50})
         odor_dict -- _description_ (default: {{}})
         verbose -- _description_ (default: {False})
 
@@ -358,7 +358,7 @@ def check_entryside_and_flip(df_, odor_width=50, odor_dict={}, verbose=False):
         start_ = df_.iloc[0].name if si==0 else last_outbout_ix
         stop_ = df_.iloc[-1].name if entry_ix == entry_ixs[-1] else entry_ixs[si+1]-1
         tmpdf = df_.loc[start_:stop_]
-        oparams = get_odor_params(tmpdf.loc[start_:stop_], odor_width=odor_width, 
+        oparams = get_odor_params(tmpdf.loc[start_:stop_], strip_width=strip_width, 
                                         is_grid=True, get_all_borders=False, entry_ix=entry_ix)
         if verbose:
             print('... {}: {}'.format(si, oparams['entry_left_edge']))
@@ -438,7 +438,7 @@ def check_entry_left_edge(df, entry_ix=0, return_bool=False):
         return entry_left_edge
  
 
-def get_odor_params(df, odor_width=50, grid_sep=200, get_all_borders=True,
+def get_odor_params(df, strip_width=50, strip_sep=200, get_all_borders=True,
                     entry_ix=None, is_grid=False, check_odor=False, 
                     mfc_var='mfc2_stpt'):
     '''
@@ -449,8 +449,8 @@ def get_odor_params(df, odor_width=50, grid_sep=200, get_all_borders=True,
         df (pd.DataFrame) : full dataframe (from load_dataframe())
         
     Keyword Arguments:
-        odor_width (float) :  Width of odor corridor in mm (default: 50)
-        grid_sep (float) : Separation between odor strips (default: 200)
+        strip_width (float) :  Width of odor corridor in mm (default: 50)
+        strip_sep (float) : Separation between odor strips (default: 200)
         entry_ix (int) : index of 1st entry (can be 1st entry of Nth corridor if is_grid)
         is_grid (bool) : 
             Is grid of odor strips (odor start is at odor edge if not 1st odor encounter)
@@ -466,8 +466,8 @@ def get_odor_params(df, odor_width=50, grid_sep=200, get_all_borders=True,
     if df[df['instrip']].shape[0]==0:
         #print(df.shape)
         entry_left_edge=None
-        odor_xmin = -odor_width/2.
-        odor_xmax = odor_width/2.
+        odor_xmin = -strip_width/2.
+        odor_xmax = strip_width/2.
         odor_start_time = df.iloc[0]['time']
         odor_start_posx, odor_start_posy = (0, 0)
         currdf = df.copy()
@@ -479,20 +479,20 @@ def get_odor_params(df, odor_width=50, grid_sep=200, get_all_borders=True,
         currdf = df.loc[entry_ix:].copy()
         if is_grid and entry_left_edge is not None: # entry_left must be true or false
             if get_all_borders:
-                ogrid, in_odor = get_odor_grid(currdf, odor_width=odor_width, grid_sep=grid_sep,
+                ogrid, in_odor = get_odor_grid(currdf, strip_width=strip_width, strip_sep=strip_sep,
                                     use_crossings=True, verbose=False)
                 odor_borders = list(ogrid.values())
             else:
                 if entry_left_edge:
                     odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] 
-                    odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] + odor_width
+                    odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] + strip_width
                 else: # entered right, so entry point is largest val
-                    odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] - odor_width
+                    odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] - strip_width
                     odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] 
                 odor_borders = (odor_xmin, odor_xmax)
         else:
-            odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] - (odor_width/2.)
-            odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] + (odor_width/2.)
+            odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] - (strip_width/2.)
+            odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] + (strip_width/2.)
             odor_borders = (odor_xmin, odor_xmax)
 
         odor_start_time = currdf[currdf['instrip']].iloc[0]['time']
@@ -784,7 +784,7 @@ def smooth_traces_interp(df, xvar='ft_posx', yvar='ft_posy', window_size=13, ret
         return xint, yint
 
 # checks
-def get_odor_grid_all_flies(df0, odor_width=50, grid_sep=200):
+def get_odor_grid_all_flies(df0, strip_width=50, strip_sep=200):
     '''
     Wraps get_odor_grid() in a loop for all ddatafiles.
 
@@ -792,8 +792,8 @@ def get_odor_grid_all_flies(df0, odor_width=50, grid_sep=200):
         df0 -- _description_
 
     Keyword Arguments:
-        odor_width -- _description_ (default: {50})
-        grid_sep -- _description_ (default: {200})
+        strip_width -- _description_ (default: {50})
+        strip_sep -- _description_ (default: {200})
 
     Returns:
         odor_borders (dict) : 
@@ -802,7 +802,7 @@ def get_odor_grid_all_flies(df0, odor_width=50, grid_sep=200):
     '''
     odor_borders={}
     for trial_id, currdf in df0.groupby(['trial_id']):
-        ogrid, in_odor = get_odor_grid(currdf, odor_width=odor_width, grid_sep=grid_sep,
+        ogrid, in_odor = get_odor_grid(currdf, strip_width=strip_width, strip_sep=strip_sep,
                                     use_crossings=True, verbose=False)
         if not in_odor:
             print(trial_id, "WARNING: Fly never in odor (cond={})".format(currdf['condition'].unique()))
@@ -814,19 +814,19 @@ def get_odor_grid_all_flies(df0, odor_width=50, grid_sep=200):
 
     return odor_borders
 
-def get_odor_grid(df, odor_width=10, grid_sep=200, use_crossings=True,
+def get_odor_grid(df, strip_width=10, strip_sep=200, use_crossings=True,
                     use_mean=True, verbose=True):
     if df[df['instrip']].shape[0]==0:
         # fly never in odor
         if verbose:
             print("WARNING: Fly is never in odor, using default corridor.")
-        curr_odor_xmin = -odor_width/2.
-        curr_odor_xmax = odor_width/2.
+        curr_odor_xmin = -strip_width/2.
+        curr_odor_xmax = strip_width/2.
         odor_grid = {'c0': (curr_odor_xmin, curr_odor_xmax)}
         odor_flag = False
     else:
-        odor_grid = find_odor_grid(df, odor_width=odor_width, grid_sep=grid_sep)
-        odor_grid = check_odor_grid(df, odor_grid, odor_width=odor_width, grid_sep=grid_sep, 
+        odor_grid = find_odor_grid(df, strip_width=strip_width, strip_sep=strip_sep)
+        odor_grid = check_odor_grid(df, odor_grid, strip_width=strip_width, strip_sep=strip_sep, 
                         use_crossings=use_crossings, use_mean=use_mean, verbose=verbose)
         odor_flag = True
 
@@ -854,7 +854,7 @@ def find_borders(df, strip_width = 10, strip_spacing = 200):
     return x_borders #all_x_borders, all_y_borders
 
  
-def find_odor_grid(df, odor_width=10, grid_sep=200): #use_crossings=True,
+def find_odor_grid(df, strip_width=10, strip_sep=200): #use_crossings=True,
 #                   use_mean=True, verbose=True):
     '''
     Finds the odor boundaries based on odor width and grid separation
@@ -863,16 +863,16 @@ def find_odor_grid(df, odor_width=10, grid_sep=200): #use_crossings=True,
         df -- _description_
 
     Keyword Arguments:
-        odor_width -- _description_ (default: {10})
-        grid_sep -- _description_ (default: {200})
+        strip_width -- _description_ (default: {10})
+        strip_sep -- _description_ (default: {200})
 
     Returns:
         _description_
     '''
     # get first odor entry
     assert len(df['instrip'].unique())==2, "Fly not in odor."
-    curr_odor_xmin = df[df['instrip']].iloc[0]['ft_posx'] - (odor_width/2.)
-    curr_odor_xmax = df[df['instrip']].iloc[0]['ft_posx'] + (odor_width/2.)
+    curr_odor_xmin = df[df['instrip']].iloc[0]['ft_posx'] - (strip_width/2.)
+    curr_odor_xmax = df[df['instrip']].iloc[0]['ft_posx'] + (strip_width/2.)
 
     # identify other grid crossings
     indf = df[df['instrip']].copy()
@@ -881,27 +881,27 @@ def find_odor_grid(df, odor_width=10, grid_sep=200): #use_crossings=True,
 
     indf = df[df['instrip']].copy()
     # where is the fly outside of current odor boundary but still instrip:
-    # nextgrid_df = indf[ (indf['ft_posx']>(curr_odor_xmax.round(2)+grid_sep*0.5) | ((indf['ft_posx']<curr_odor_xmin.round(2)-grid_sep*0.5))].copy()
-    nextgrid_df = indf[ (indf['ft_posx']>np.ceil(curr_odor_xmax)+grid_sep*0.5) \
-                   | ((indf['ft_posx']<np.floor(curr_odor_xmin)-grid_sep*0.5)) ].copy()
+    # nextgrid_df = indf[ (indf['ft_posx']>(curr_odor_xmax.round(2)+strip_sep*0.5) | ((indf['ft_posx']<curr_odor_xmin.round(2)-strip_sep*0.5))].copy()
+    nextgrid_df = indf[ (indf['ft_posx']>np.ceil(curr_odor_xmax)+strip_sep*0.5) \
+                   | ((indf['ft_posx']<np.floor(curr_odor_xmin)-strip_sep*0.5)) ].copy()
     # loop through the remainder of odor strips in experiment until all strips found
     while nextgrid_df.shape[0] > 0:
         # get odor params of next corridor
         last_ix = nextgrid_df[nextgrid_df['instrip']].iloc[0].name
-        next_odorp = get_odor_params(df, odor_width=odor_width, 
+        next_odorp = get_odor_params(df, strip_width=strip_width, 
                             entry_ix=last_ix, is_grid=True, get_all_borders=False)
         # update odor param dict
         odor_grid.update({'c{}'.format(last_ix): (next_odorp['odor_boundary'])})
         (curr_odor_xmin, curr_odor_xmax) = next_odorp['odor_boundary']
         # look for another odor corridor (outside of current odor boundary, but instrip)
-        nextgrid_df = indf[ (indf['ft_posx'] >= (curr_odor_xmax+grid_sep)) \
-                        | ((indf['ft_posx'] <= (curr_odor_xmin-grid_sep))) ]\
+        nextgrid_df = indf[ (indf['ft_posx'] >= (curr_odor_xmax+strip_sep)) \
+                        | ((indf['ft_posx'] <= (curr_odor_xmin-strip_sep))) ]\
                         .loc[last_ix:].copy()
 
     return odor_grid
 
 
-def check_odor_grid(df, odor_grid, odor_width=10, grid_sep=200, use_crossings=True,
+def check_odor_grid(df, odor_grid, strip_width=10, strip_sep=200, use_crossings=True,
                     use_mean=True, verbose=True):
     '''
     Use actual edge crossings to get odor boundary.
@@ -911,8 +911,8 @@ def check_odor_grid(df, odor_grid, odor_width=10, grid_sep=200, use_crossings=Tr
         df (pd.DataFrame) : parsed .log file, must have instrip, ft_posx, ft_posy
 
     Keyword Arguments:
-        odor_width -- odor corridor width in mm (default: {10, specific to imaging; typically, 50mm})
-        grid_sep -- separation in mm of odor corridors (default: {200})
+        strip_width -- odor corridor width in mm (default: {10, specific to imaging; typically, 50mm})
+        strip_sep -- separation in mm of odor corridors (default: {200})
         use_crossings - Use actual crossings (mean or min/max) for odor boundaries, not just 1st time in odor
         use_mean -- Use mean values or min/max values of crossings (default: {True})
         verbose -- print stuff or no (default: {True})
@@ -934,7 +934,7 @@ def check_odor_grid(df, odor_grid, odor_width=10, grid_sep=200, use_crossings=Tr
             if crossed_edge:
                 traveled_xmin, traveled_xmax = get_boundary_from_crossings(df, 
                                                 curr_odor_xmin, curr_odor_xmax,
-                                                ix=curr_grid_ix, odor_width=odor_width, grid_sep=grid_sep, 
+                                                ix=curr_grid_ix, strip_width=strip_width, strip_sep=strip_sep, 
                                                 use_mean=use_mean)
                 if verbose:
                     print('... {}: min {:.2f} vs traveled {:.2f}'.format(cnum, curr_odor_xmin, traveled_xmin))
@@ -954,23 +954,23 @@ def check_odor_grid(df, odor_grid, odor_width=10, grid_sep=200, use_crossings=Tr
                 traveled_xmin = curr_odor_xmin
                 traveled_xmax = curr_odor_xmax
             else:
-                if traveled_xmax < ctr+odor_width*0.5: # animal never crosses right side
+                if traveled_xmax < ctr+strip_width*0.5: # animal never crosses right side
                     traveled_xmax = curr_odor_xmax
                     if verbose:
                         print("... setting travel xmax: {:.2f}".format(curr_odor_xmax))
-                if traveled_xmin > ctr-odor_width*0.5:
+                if traveled_xmin > ctr-strip_width*0.5:
                     traveled_xmin = curr_odor_xmin # animal never crosses left side (?)
                     if verbose:
                         print("... setting travel xmin: {:.2f}".format(curr_odor_xmin))
             # check width
-            if abs(odor_width - (traveled_xmax - traveled_xmin)) < odor_width*0.25:
+            if abs(strip_width - (traveled_xmax - traveled_xmin)) < strip_width*0.25:
                 if verbose:
                     print("... {} updating: ({:.2f}, {:.2f})".format(cnum, traveled_xmin, traveled_xmax))
                 odor_grid.update({cnum: (traveled_xmin, traveled_xmax)})
             else:
                 bad_corridors.append(cnum)
                 if verbose:
-                    print("... Difference was: {:.2f}".format(abs(odor_width - (traveled_xmax - traveled_xmin))))
+                    print("... Difference was: {:.2f}".format(abs(strip_width - (traveled_xmax - traveled_xmin))))
                     print("... Skipping current boundary crossing")
 
         for b in bad_corridors:
@@ -1006,13 +1006,13 @@ def are_there_crossings(currdf, curr_odor_xmin, curr_odor_xmax):
 
 
 def get_boundary_from_crossings(df, curr_odor_xmin, curr_odor_xmax, ix=0,
-                    grid_sep=200, odor_width=10, use_mean=True,
+                    strip_sep=200, strip_width=10, use_mean=True,
                     verbose=False):
     # get left and right edge crossings
-    right_xings = df[(df['ft_posx'] <= (curr_odor_xmax+odor_width*.5)) \
-                & (df['ft_posx'] >= (curr_odor_xmax-odor_width*.5))].loc[ix:].copy()
-    left_xings = df[(df['ft_posx'] <= (curr_odor_xmin+odor_width*.5)) \
-                & (df['ft_posx'] >= (curr_odor_xmin-odor_width*.5))].loc[ix:].copy()
+    right_xings = df[(df['ft_posx'] <= (curr_odor_xmax+strip_width*.5)) \
+                & (df['ft_posx'] >= (curr_odor_xmax-strip_width*.5))].loc[ix:].copy()
+    left_xings = df[(df['ft_posx'] <= (curr_odor_xmin+strip_width*.5)) \
+                & (df['ft_posx'] >= (curr_odor_xmin-strip_width*.5))].loc[ix:].copy()
 
     # get in/out bouts
     right_xings = parse_bouts(right_xings, count_varname='instrip')
@@ -1048,7 +1048,7 @@ def get_boundary_from_crossings(df, curr_odor_xmin, curr_odor_xmax, ix=0,
     if len(first_in_ixs_right)>0 and len(first_in_ixs_left)==0: # animal always on larger edge
         traveled_xmax = df.loc[first_in_ixs_right]['ft_posx'].mean() \
             if use_mean else df.loc[first_in_ixs_right]['ft_posx'].max()
-        traveled_xmin = traveled_xmax - odor_width
+        traveled_xmin = traveled_xmax - strip_width
     elif len(first_in_ixs_right)>0 and len(first_in_ixs_left)>0: # animal crosses at least once
         #print("got both")
         traveled_xmax = df.loc[first_in_ixs_right]['ft_posx'].mean() \
@@ -1059,7 +1059,7 @@ def get_boundary_from_crossings(df, curr_odor_xmin, curr_odor_xmax, ix=0,
         # len(onright)==0 and len(onleft)>0 # animal always on smaller/left edge
         traveled_xmin = df.loc[first_in_ixs_left]['ft_posx'].mean() \
             if use_mean else df.loc[first_in_ixs_left]['ft_posx'].min()
-        traveled_xmax = traveled_xmin + odor_width
+        traveled_xmax = traveled_xmin + strip_width
     #set_odor_min = traveled_xmin if traveled_xmin < curr_odor_xmin else curr_odor_xmin
     #set_odor_max = traveled_xmax if traveled_xmax > curr_odor_xmax else curr_odor_xmax
     #set_odor_min = traveled_xmin
@@ -1566,7 +1566,7 @@ def mean_dir_after_stop(df, heading_var='ft_heading',theta_range=(-np.pi, np.pi)
     return meandirs
 
 
-def summarize_stops_and_turns(df_, meanangs_, last_,  odor_width=10, xvar='ft_posx', yvar='ft_posy',
+def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, xvar='ft_posx', yvar='ft_posy',
                     laststop_color='b', stop_color=[0.9]*3, theta_range=(-np.pi, np.pi), offset=20,
                     theta_cmap='hsv', instrip_palette={True: 'r', False: 'w'}, xlims=None,
                     stop_marker='.', stop_markersize=3, lw=0):
@@ -1575,7 +1575,7 @@ def summarize_stops_and_turns(df_, meanangs_, last_,  odor_width=10, xvar='ft_po
     # Construct figure and axis to plot on
     fig = pl.figure( figsize=(8, 6))
     ax = fig.add_subplot(1, 2, 1)
-    oparams = get_odor_params(df_, odor_width=odor_width, is_grid=True)
+    oparams = get_odor_params(df_, strip_width=strip_width, is_grid=True)
     ax= plot_trajectory(df_, ax=ax, odor_bounds=oparams['odor_boundary'], 
                               palette=instrip_palette)
     # plot all stops
@@ -1620,7 +1620,7 @@ def summarize_stops_and_turns(df_, meanangs_, last_,  odor_width=10, xvar='ft_po
 # ----------------------------------------------------------------------
 
 def plot_trajectory_from_file(fpath, parse_info=False,
-            odor_width=10, grid_sep=200, ax=None):
+            strip_width=10, strip_sep=200, ax=None):
     # load and process the csv data  
     df0 = load_dataframe(fpath, mfc_id=None, verbose=False, cond=None, 
                 parse_info=False)
@@ -1632,7 +1632,7 @@ def plot_trajectory_from_file(fpath, parse_info=False,
         fly_id = df0['fly_id'].unique()[0]
 
     # get experimentally determined odor boundaries:
-    ogrid, in_odor = get_odor_grid(df0, odor_width=odor_width, grid_sep=grid_sep,
+    ogrid, in_odor = get_odor_grid(df0, strip_width=strip_width, strip_sep=strip_sep,
                             use_crossings=True, verbose=False )
     #(odor_xmin, odor_xmax), = ogrid.values()
     odor_bounds = list(ogrid.values())

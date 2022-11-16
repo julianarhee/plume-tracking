@@ -65,9 +65,9 @@ def main():
     parser.add_argument('-d', '--datestr', default='MMDDYYYY-HHmm', action='store',
         help='MMDDYYYY-HHmm.log format')
 
-    parser.add_argument('-w', '--odor_width', type=float, default=10,
+    parser.add_argument('-w', '--strip_width', type=float, default=10,
         help='odor width, mm (default: 10)')
-    parser.add_argument('-s', '--grid_sep', type=float, default=200,
+    parser.add_argument('-s', '--strip_sep', type=float, default=200,
         help='grid separation, mm (default: 200)')
     parser.add_argument('-v', '--verbose', type=bool, default=False,
         help='verbose, print all statements')
@@ -77,15 +77,15 @@ def main():
     experiment = args.experiment
     datestr = args.datestr
 
-    odor_width = args.odor_width
-    grid_sep = args.grid_sep
+    strip_width = args.strip_width
+    strip_sep = args.strip_sep
     user_input = False
     parse_info = False
 
     fpath = select_logfile(experiment, datestr, user_input=user_input, rootdir=rootdir)
     fig, ax = pl.subplots()
     butil.plot_trajectory_from_file(fpath, parse_info=parse_info, 
-                odor_width=odor_width, grid_sep=grid_sep, ax=ax)
+                strip_width=strip_width, strip_sep=strip_sep, ax=ax)
 
     # label figure and save
     fig_id = '{}: {}'.format(experiment, datestr)
