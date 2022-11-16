@@ -56,7 +56,7 @@ def select_logfile(experiment, datestr, user_input=False,
 
 #%%
 def main():
-    parser = argparse.ArgumentParser(description='Preprocessing steps.')
+    parser = argparse.ArgumentParser(description='Quickly visualize fly trajectory')
     parser.add_argument('-R', '--rootdir', type=str, 
         default='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data/jyr',
         help='Base name for directories. Example: /Full/path/to/data/folder/Edge_Tracking/Data')
