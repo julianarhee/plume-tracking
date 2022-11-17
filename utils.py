@@ -153,13 +153,13 @@ def label_figure(fig, fig_id):
 
 def set_sns_style(style='dark'):
     font_styles = {
-                    'axes.labelsize': 8, # x and y labels
-                    'axes.titlesize': 10, # axis title size
+                    'axes.labelsize': 7, # x and y labels
+                    'axes.titlesize': 7, # axis title size
                     'figure.titlesize': 10,
-                    'xtick.labelsize': 7, # fontsize of tick labels
-                    'ytick.labelsize': 7,  
+                    'xtick.labelsize': 6, # fontsize of tick labels
+                    'ytick.labelsize': 6,  
                     'legend.fontsize': 6,
-                    'legend.title_fontsize': 7
+                    'legend.title_fontsize': 6
         }
     if style=='dark':
         custom_style = {
@@ -236,7 +236,7 @@ def add_colorwheel(fig, cmap='hsv', axes=[0.7, 0.7, 0.3, 0.3],
     return display_axes
 
 def circular_hist(ax, x, bins=16, density=True, offset=0, gaps=True, 
-                    edgecolor='w', facecolor=[0.7]*3, alpha=0.7):
+                    edgecolor='w', facecolor=[0.7]*3, alpha=0.7, lw=0.5):
     """
     Produce a circular histogram of angles on ax.
 
@@ -296,7 +296,7 @@ def circular_hist(ax, x, bins=16, density=True, offset=0, gaps=True,
         radius = n
     # Plot data on ax
     patches = ax.bar(bins[:-1], radius, zorder=1, width=widths, #align='edge', 
-                     edgecolor=edgecolor, fill=True, linewidth=0.5, facecolor=facecolor,
+                     edgecolor=edgecolor, fill=True, linewidth=lw, facecolor=facecolor,
                     alpha=alpha)
     # Set the direction of the zero angle
     ax.set_theta_offset(offset)
@@ -340,3 +340,13 @@ def plot_vector_path(ax, x, y, c, scale=1.5, width=0.005, headwidth=5,
     colorbar_from_mappable(ax, norm, cmap=colormap, hue_title=hue_title)
     return ax
 
+
+def custom_legend(labels, colors, use_line=True, lw=4, markersize=10):
+
+    if use_line:
+        legh = [mpl.lines.Line2D([0], [0], color=c, label=l, lw=lw) for c, l in zip(colors, labels)]
+    else:
+        legh = [mpl.lines.Line2D([0], [0], marker='o', color='w', label=l, lw=0,
+                    markerfacecolor=c, markersize=markersize) for c, l in zip(colors, labels)]
+
+    return legh
