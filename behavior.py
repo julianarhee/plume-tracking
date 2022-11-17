@@ -24,6 +24,8 @@ import rdp
 import _pickle as pkl
 import scipy.stats as sts
 
+
+
 # plotting
 import matplotlib as mpl
 import plotly.express as px
@@ -33,6 +35,22 @@ import seaborn as sns
 # ----------------------------------------------------------------------
 # Data loading
 # ----------------------------------------------------------------------
+def get_log_files(src_dir, verbose=False):
+    try:
+        log_files = sorted([k for k in glob.glob(os.path.join(src_dir, 'raw', '*.log'))], \
+                        key=util.natsort)
+        assert len(log_files)>0, "No log files found in src_dir raw: {}".format(src_dir)
+    except AssertionError:
+        print("Checking parent dir.")
+        log_files = sorted([k for k in glob.glob(os.path.join(src_dir, '*.log'))], \
+                        key=util.natsort)
+    print("Found {} tracking files.".format(len(log_files)))
+    if verbose:
+        for fi, fn in enumerate(log_files):
+            print(fi, os.path.split(fn)[-1])
+
+    return log_files
+
 def parse_info_from_file(fpath, experiment=None, 
             rootdir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
     '''
@@ -112,7 +130,7 @@ def load_dataframe_test(fpath, mfc_id=None, led_id=None, verbose=False, cond='od
 
 
 def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
-                    parse_info=True, savedir=None):
+                    parse_info=True, savedir=None, remove_invalid=True):
     '''
     Read raw .log file from behavior and return formatted dataframe.
     Assumes MFC for odor is either 'mfc2_stpt' or 'mfc3_stpt'.
@@ -127,6 +145,9 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
     df0 = pd.read_csv(fpath, encoding='latin' )#, sep=",", skiprows=[1], header=0, 
               #parse_dates=[1]).rename(columns=lambda x: x.strip())
 
+    fname = os.path.splitext(os.path.split(fpath)[-1])[0]
+    df0['filename'] = fname
+
     # split up the timstampe str
     df0['timestamp'] = df0['timestamp -- motor_step_command']\
                             .apply(lambda x: x.split(' -- ')[0])
@@ -137,6 +158,7 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
     df0['time'] = df0['timestamp'].apply(lambda x: \
                             time.mktime(datetime.strptime(x, datefmt).timetuple()) \
                             + datetime.strptime(x, datefmt).microsecond / 1E6 ).astype('float')
+    df0['rel_time'] = df0['time'] - df0['time'].iloc[0]
     # convert datestr
     df0['date'] = df0['timestamp'].apply(lambda s: \
             int(datetime.strptime(s.split('-')[0], "%m/%d/%Y").strftime("%Y%m%d")))
@@ -190,12 +212,13 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
 #            df0['led_on'] = df0['led1_stpt']==0 # 20221018, quick fix for now bec dont know when things changed
 
     # check for wonky skips
-    df0, ft_flag = check_ft_skips(df0, plot=True)
+    df0, ft_flag = check_ft_skips(df0, plot=True, remove_invalid=remove_invalid)
     if ft_flag:
         print("--> found wonky FTs, check: {}".format(fpath))
         if savedir is not None:
             fname = os.path.splitext(os.path.split(fpath)[-1])[0]
             pl.savefig(os.path.join(savedir, 'wonkyft_{}.png'.format(fname)))
+            pl.close()
 
     if parse_info:
         # get experiment info
@@ -215,14 +238,14 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
     return df0
 
 
-
-
-def check_ft_skips(df, plot=False):
+def check_ft_skips(df, plot=False, remove_invalid=True):
     bad_skips={}
     max_step_size={'ft_posx': 10, 'ft_posy': 10, 'ft_frame': 100}
     for pvar, stepsize in max_step_size.items():
         if pvar=='ft_frame':
-            wonky_skips = np.where(df[pvar]==1)[0]
+            first_frame = df['ft_frame'].min()
+            
+            wonky_skips = np.where(df[pvar]==first_frame+1)[0]
             if len(wonky_skips)>1:
                 wonky_skips = wonky_skips[1:]
             else:
@@ -235,7 +258,9 @@ def check_ft_skips(df, plot=False):
             print("WARNING: found wonky ft skip ({} jumped {:.2f}).".format(pvar, first_step))
     if len(bad_skips.keys())>0:
         if plot==True:
-            fig, ax = pl.subplots() 
+            fig, ax = pl.subplots(figsize=(3,3)) 
+            fname = df['filename'].unique()[0]
+            ax.set_title(fname)
             ax.plot(df['ft_frame'].diff().abs())
             cols = ['r', 'b', 'g']
             for pi, ((pvar, off_ixs), col) in enumerate(zip(bad_skips.items(), cols)):
@@ -246,10 +271,17 @@ def check_ft_skips(df, plot=False):
 
     if len(bad_skips)>0:
         flag=True
-        wonky_skips = bad_skips['ft_frame']
-        valid_df = df.iloc[0:wonky_skips[0]].copy()
-        sz_removed = df.shape[0] - valid_df.shape[0]
-        print("Removing {} of {} samples.".format(sz_removed, df.shape[0]))
+        if 'ft_frame' in bad_skips.keys():
+            wonky_skips = bad_skips['ft_frame']
+        else:
+            key = list(bad_skips.keys())[0]
+            wonky_skips = bad_skips[key]
+        if remove_invalid:
+            valid_df = df.iloc[0:wonky_skips[0]].copy()
+            sz_removed = df.shape[0] - valid_df.shape[0]
+            print("Removing {} of {} samples.".format(sz_removed, df.shape[0]))
+        else:
+            valid_df = df.copy()
     else:
         flag=False
         valid_df = df.copy()
@@ -280,7 +312,8 @@ def load_df(fpath):
         df = pkl.load(f)
     return df
 
-def load_combined_df(src_dir, create_new=False, verbose=False, save_errors=True):
+def load_combined_df(src_dir, create_new=False, verbose=False, save_errors=True, remove_invalid=True,
+                        process=True, save=True):
 
     # first, check if combined df exists
     if 'raw' in src_dir:
@@ -289,12 +322,15 @@ def load_combined_df(src_dir, create_new=False, verbose=False, save_errors=True)
         src_dir_temp = src_dir
 
     df_fpath = os.path.join(src_dir_temp, 'combined_df.pkl')
-    if os.path.exists(df_fpath) and create_new is False:
-        print("loading existing combined df")
-        try:
-            df = load_df(df_fpath)
-            return df
-        except Exception as e:
+    if create_new is False:
+        if os.path.exists(df_fpath):
+            print("loading existing combined df")
+            try:
+                df = load_df(df_fpath)
+                return df
+            except Exception as e:
+                create_new=True
+        else:
             create_new=True
 
     if save_errors:
@@ -317,7 +353,8 @@ def load_combined_df(src_dir, create_new=False, verbose=False, save_errors=True)
             exp, datestr, fly_id, cond = parse_info_from_file(fn)
             if verbose:
                 print(exp, datestr, fly_id, cond)
-            df_ = load_dataframe(fn, mfc_id=None, verbose=False, cond=cond, savedir=savedir)
+            df_ = load_dataframe(fn, mfc_id=None, verbose=False, cond=cond, savedir=savedir, 
+                                    remove_invalid=remove_invalid)
             dlist.append(df_)
         df = pd.concat(dlist, axis=0)
 
@@ -325,14 +362,18 @@ def load_combined_df(src_dir, create_new=False, verbose=False, save_errors=True)
             # update condition names
             df.loc[df['condition']=='light', 'condition'] = 'lightonly'
 
+        if process:
+            df = process_df(df)
+
         # save
-        print("Saving combined df to: {}".format(src_dir_temp))
-        save_df(df, df_fpath)
+        if save:
+            print("Saving combined df to: {}".format(src_dir_temp))
+            save_df(df, df_fpath)
 
     return df
 
 
-def check_entryside_and_flip(df_, strip_width=50, odor_dict={}, verbose=False):
+def check_entryside_and_flip(df_, strip_width=50, odor_dict=None, verbose=False):
     '''
     Check if animal enters on corridor's left or right edge. Flip so that animal 
     enters on corridor's RIGHT edge (animal's left side). 
@@ -346,15 +387,23 @@ def check_entryside_and_flip(df_, strip_width=50, odor_dict={}, verbose=False):
         verbose -- _description_ (default: {False})
 
     Returns:
-        _description_
+        df_fp (pd.DataFrame) : dataframe with coords flipped to have tracking on odor RIGHT edge (fly's left)
+        new_borders (dict) : odor borders for flipped
     '''
     new_borders={}
+    if odor_dict is None:
+        odor_dict, in_odor = get_odor_grid(df_, strip_width=strip_width)
+    if not in_odor:
+        return 
     entry_ixs = [int(k[1:]) for k, v in odor_dict.items()]
     df_copy = df_.copy()
     df_copy['flipped'] = False
     for si, entry_ix in enumerate(entry_ixs):
         #df.loc[start_ix]
-        last_outbout_ix = df_.loc[entry_ix-1].name
+        if entry_ix == 0:
+            last_bout_ix = 0
+        else:
+            last_outbout_ix = df_.loc[entry_ix-1].name
         start_ = df_.iloc[0].name if si==0 else last_outbout_ix
         stop_ = df_.iloc[-1].name if entry_ix == entry_ixs[-1] else entry_ixs[si+1]-1
         tmpdf = df_.loc[start_:stop_]
@@ -815,7 +864,24 @@ def get_odor_grid_all_flies(df0, strip_width=50, strip_sep=200):
     return odor_borders
 
 def get_odor_grid(df, strip_width=10, strip_sep=200, use_crossings=True,
-                    use_mean=True, verbose=True):
+                    use_mean=True, verbose=False):
+    '''
+    Get all odor corridors in current fly's trajectory. 
+
+    Arguments:
+        df -- _description_
+
+    Keyword Arguments:
+        strip_width -- odor strip width (default: {10})
+        strip_sep -- separation (mm) between corridors (default: {200})
+        use_crossings -- use actual crossings (default: {True})
+        use_mean -- use average of crossings, rather than max/min (default: {True})
+        verbose -- _description_ (default: {True})
+
+    Returns:
+        odor_dict (dict) : keys are 'cIX' where IX is entry index, and values are tuple (min, max)
+        odor_flag (bool) : boolean whether animal ever in order or no
+    '''
     if df[df['instrip']].shape[0]==0:
         # fly never in odor
         if verbose:
@@ -854,7 +920,7 @@ def find_borders(df, strip_width = 10, strip_spacing = 200):
     return x_borders #all_x_borders, all_y_borders
 
  
-def find_odor_grid(df, strip_width=10, strip_sep=200): #use_crossings=True,
+def find_odor_grid(df, strip_width=10, strip_sep=200, plot=True): #use_crossings=True,
 #                   use_mean=True, verbose=True):
     '''
     Finds the odor boundaries based on odor width and grid separation
@@ -870,7 +936,11 @@ def find_odor_grid(df, strip_width=10, strip_sep=200): #use_crossings=True,
         _description_
     '''
     # get first odor entry
-    assert len(df['instrip'].unique())==2, "Fly not in odor."
+    if not len(df['instrip'].unique())==2:
+        print("WARNING: Fly only in odor or never. {}".format(df['trial_id'].unique()))
+        if plot:
+            fig = plot_trajectory(df)
+    #assert len(df['instrip'].unique())==2, "Fly not in odor. {}".format(df['trial_id'].unique())
     curr_odor_xmin = df[df['instrip']].iloc[0]['ft_posx'] - (strip_width/2.)
     curr_odor_xmax = df[df['instrip']].iloc[0]['ft_posx'] + (strip_width/2.)
 
@@ -1400,8 +1470,9 @@ def plot_bout(b_, ax, xvar='ft_posx', yvar='ft_posy', hue_var='time',
 
 def add_colored_lines(b_, ax, xvar='ft_posx', yvar='ft_posy', 
                     hue_var='heading', cmap='hsv', norm=None):
-    if norm is None:
-        mpl.colors.Normalize(theta_range[0], theta_range[1])
+    #if norm is None:
+    #    mpl.colors.Normalize(theta_range[0], theta_range[1])
+    assert norm is not None, "Must provide norm"
     xy = b_[[xvar, yvar]].values
     xy = xy.reshape(-1, 1, 2)
     huev = b_[hue_var].values
@@ -1566,6 +1637,33 @@ def mean_dir_after_stop(df, heading_var='ft_heading',theta_range=(-np.pi, np.pi)
     return meandirs
 
 
+def get_bout_metrics(df_, group_vars=['fly_id', 'condition', 'boutnum']):
+    single_vals = [i for i in df_.columns if len(df_[i].unique())==1\
+                  and i not in group_vars]
+    single_metrics = df_[single_vals].drop_duplicates().reset_index(drop=True).squeeze()
+    
+    lin_vars = ['speed', 'upwind_speed', 'crosswind_speed']
+    lin_metrics = df_[lin_vars].mean() #.reset_index(drop=True)
+    
+    misc = pd.Series({
+        'duration': df_['time'].max() - df_['time'].min(),
+        'upwind_dist_range': df_['ft_posy'].max() - df_['ft_posy'].min(),
+        'upwind_dist_firstlast': df_['ft_posy'].iloc[-1] - df_['ft_posy'].iloc[0],
+        'crosswind_dist_range': df_['ft_posx'].max() - df_['ft_posx'].min(),
+        'crosswind_dist_firstlast': df_['ft_posx'].iloc[-1] - df_['ft_posx'].iloc[0],
+        'path_length': df_['euclid_dist'].sum() -  df_['euclid_dist'].iloc[0],
+        'average_heading': sts.circmean(df_['ft_heading'], low=-np.pi, high=np.pi),
+        'rel_time': df_['rel_time'].iloc[0]
+    }) #, index=[0])
+    
+    metrics = pd.DataFrame(pd.concat([misc, lin_metrics, single_metrics])).T    
+    
+    return metrics
+
+
+
+
+
 def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, xvar='ft_posx', yvar='ft_posy',
                     laststop_color='b', stop_color=[0.9]*3, theta_range=(-np.pi, np.pi), offset=20,
                     theta_cmap='hsv', instrip_palette={True: 'r', False: 'w'}, xlims=None,
@@ -1647,7 +1745,7 @@ def plot_trajectory(df0, odor_bounds=[], ax=None,
         xvar='ft_posx', yvar='ft_posy',
         hue_varname='instrip', palette={True: 'r', False: 'w'},
         start_at_odor = True, odor_lc='lightgray', odor_lw=0.5, title='',
-        markersize=0.5, center=True, plot_legend=True):
+        markersize=0.5, center=False, plot_legend=True):
 
     # ---------------------------------------------------------------------
     if ax is None: 
@@ -1657,9 +1755,10 @@ def plot_trajectory(df0, odor_bounds=[], ax=None,
     sns.scatterplot(data=df0, x=xvar, y=yvar, ax=ax, 
                     hue=hue_varname, s=markersize, edgecolor='none', palette=palette,
                     legend=plot_legend)
+    # odor corridor
     for (odor_xmin, odor_xmax) in odor_bounds:
         plot_odor_corridor(ax, odor_xmin=odor_xmin, odor_xmax=odor_xmax)
-
+    # odor start time
     if df0[df0['instrip']].shape[0]>0:
         odor_start_ix = df0[df0['instrip']].iloc[0][yvar]
         ax.axhline(y=odor_start_ix, color='w', lw=0.5, linestyle=':')
@@ -1668,10 +1767,13 @@ def plot_trajectory(df0, odor_bounds=[], ax=None,
     ax.set_title(title)
     xmax=500
     if center:
+        ax.set_xlim([-300, 300]) 
+    else:
         try:
-            # Center corridor
-            xmax = np.ceil(df0[xvar].dropna().abs().max())
-            ax.set_xlim([-xmax-10, xmax+10])
+            # Center corridor   
+            xmin = np.floor(df0[xvar].min())
+            xmax = np.ceil(df0[xvar].max())
+            ax.set_xlim([-xmax-20, xmax+20])
         except ValueError as e:
             xmax = 500
     pl.subplots_adjust(left=0.2, right=0.8)
@@ -1766,3 +1868,159 @@ def get_quiverplot_inputs(df_, xvar='ft_posx', yvar='ft_posy'):
     vv = df_[yvar].shift(periods=-1) - df_[yvar]
 
     return x, y, uu, vv
+
+
+def plot_all_flies(df_, hue_varname='instrip', 
+                    palette={True: 'r', False: 'w'}, strip_width=50, col_wrap=4):
+    g = sns.FacetGrid(df_, col='fly_id', col_wrap=col_wrap,
+                    col_order=list(df_.groupby('fly_id').groups.keys()))
+    g.map_dataframe(sns.scatterplot, x="ft_posx", y="ft_posy", hue=hue_varname,
+                s=0.5, edgecolor='none', palette=palette) #, palette=palette)
+    g.set_titles(row_template = '{row_name}', col_template = '{col_name}', size=6)
+    # add strip borders
+    for ax in g.axes.flat:
+        odor_half = strip_width/2.
+        plot_odor_corridor(ax, odor_xmin=-odor_half, odor_xmax=odor_half) 
+        ax.set_xlim([-300, 300])
+
+    return g.fig
+
+def plot_fly_by_condition(plotdf, strip_width=50, hue_varname='instrip', 
+                            palette={True: 'r', False: 'w'}):
+    '''
+    create facet grid of fly (cols) by condition (rows)
+
+    Arguments:
+        plotdf -- _description_
+
+    Keyword Arguments:
+        strip_width -- _description_ (default: {50})
+        hue_varname -- _description_ (default: {'instrip'})
+        palette -- _description_ (default: {{True: 'r', False: 'w'}})
+
+    Returns:
+        _description_
+    '''
+    g = sns.FacetGrid(plotdf, col='fly_id', row='condition', 
+                    col_order=list(plotdf.groupby('fly_id').groups.keys()),
+                    row_order = list(plotdf.groupby('condition').groups.keys()))
+
+    g.map_dataframe(sns.scatterplot, x="ft_posx", y="ft_posy", hue=hue_varname,
+                s=0.5, edgecolor='none', palette=palette) #, palette=palette)
+    g.set_titles(row_template = '{row_name}', col_template = '{col_name}', size=6)
+    # add strip borders
+    for ax in g.axes.flat:
+        odor_half = strip_width/2.
+        plot_odor_corridor(ax, odor_xmin=-odor_half, odor_xmax=odor_half) 
+        ax.set_xlim([-300, 300])
+
+    return g.fig
+
+def plot_metrics_displot(df, plot_vars, hue_var='instrip', row_var=None,
+                    labels=[True, False], colors=['r', 'w'],
+                    limit_xaxis=False, xlim=None, fontsize=7,
+                    sharex=False, sharey=True, height=2):
+    curr_palette = dict((k, v) for k, v in zip(labels, colors))
+    melt_vars = [c for c in df.columns if c not in plot_vars]
+
+    melt_vars = [c for c in df.columns if c not in plot_vars]
+    df_ = df.melt(melt_vars, var_name='varname', value_name='varvalue')
+
+    g = sns.displot(
+        data = df_,
+        x='varvalue', col='varname', hue=hue_var, row=row_var,
+        aspect=1, height=height, lw=1, kind='ecdf',
+        palette=curr_palette, 
+        facet_kws={"sharex": sharex, "sharey": sharey}
+    )
+    g.set_titles(row_template='{row_name}', col_template='{col_name}', size=6)
+    for ax in g.axes.flat:
+        tstr = ax.get_title()
+        ax.set_xlabel(tstr, fontsize=fontsize)
+        ax.tick_params(which='both', axis='both', labelsize=fontsize)
+        #ax.set_xticklabels(ax.get_xticks(), ax.get_xticklabels(), fontsize=fontsize)
+        #ax.set_yticklabels(ax.get_yticks(), ax.get_yticklabels(), fontsize=fontsize)
+        ax.set_ylabel('Proportion', fontsize=fontsize)
+        ax.set_title('')
+        ax.set_box_aspect(1)
+    return g.fig
+
+def plot_metrics_hist(df, plot_vars, hue_var='instrip', row_var=None,
+                labels=[True, False], colors=['r', 'w'], 
+                plot_log=False, cumulative=False, stat='probability', 
+                kde=False, limit_xaxis=False, xlim=None, 
+                sharex=False, sharey=True):
+    '''
+    Plot distributions of variables (plot_vars) as a row of plots.
+
+    Arguments:
+        df -- _description_
+
+    Keyword Arguments:
+        hue_var -- str, hue variable
+        l1 -- hue label1 (default: {True})
+        l2 -- hue label2 (default: {False})
+        c1 -- color1 label (default: {'r'})
+        c2 -- color2 label (default: {'w'})
+        plot_log -- bool, plot x on log-scale (default: {False})
+        cumulative -- bool, plot as CDF (default: {False})
+        stat -- str, pick density for bar areas=1 and prob for heights=1 (default: {'probability'})
+        kde -- bool, (default: {False})
+        limit_xaxis -- bool, if long tail (default: {False})
+        xlim -- tuple, list (default: {None})
+        plot_vars -- list of vars to plot (default: {[]})
+
+    Returns:
+        _description_
+    '''
+    curr_palette=dict((k, v) for k, v in zip(labels, colors))
+
+    melt_vars = [c for c in df.columns if c not in plot_vars]
+    df_ = df.melt(melt_vars, var_name='varname', value_name='varvalue')
+
+    g = sns.FacetGrid(df_, col='varname', row=row_var,
+                        sharex=sharex, sharey=sharey)
+    g.map_dataframe(sns.histplot, x='varvalue', hue=hue_var,
+                fill=False, element='step', 
+                stat='probability', common_norm=False, 
+                palette=curr_palette)
+    if plot_log:
+        g.set(yscale='log')
+
+#    fig, axn = pl.subplots(1, len(plot_vars), figsize=(8, 3))
+#    for ai, (ax, varname) in enumerate(zip(axn, plot_vars)):
+#        #varname = '{}_log'.format(pvar) if plot_log else pvar
+#        sns.histplot(data=df, x=varname, hue=hue_var, ax=ax, #legend=True, 
+#                     cumulative=cumulative, fill=False, element='step', 
+#                     stat=stat, kde=kde, lw=1,
+#                     palette=curr_palette)
+#        ax.legend_.remove()
+#        if plot_log:
+#            xmin = np.ceil(df[varname].min())
+#            if xmin<0:
+#                print(varname)
+#            ax.set(xscale ='log')
+#            ax.set_xlim([xmin, ax.get_xlim()[-1]])
+
+    g.set_titles(row_template='{row_name}', col_template='{col_name}', size=6)
+    for ax in g.axes.flat:
+        tstr = ax.get_title()
+        #ylabel, xlabel = tstr.split(' | ')
+        ax.set_xlabel(tstr) #, fontsize)=fontsize)
+        ax.set_xticklabels(ax.get_xticklabels()) #, fontsize=fontsize)
+        ax.set_yticklabels(ax.get_yticklabels()) #, fontsize=fontsize)
+        ax.set_ylabel('Proportion') #, fontsize=fontsize)
+        ax.set_title('')
+        if limit_xaxis:
+            ax.set_xlim([-10, 300])
+        ax.set_box_aspect(1)
+    sns.despine()
+
+    # custom legend
+    pl.subplots_adjust(left=0.1, right=0.8, wspace=0.8)
+    legh = util.custom_legend(labels, colors, lw=1)
+    g.axes.flat[-1].legend(handles=legh, labels=labels, bbox_to_anchor=(1,1), loc='upper left', frameon=False)
+
+    return g.fig
+
+
