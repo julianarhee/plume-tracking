@@ -19,12 +19,9 @@ import numpy as np
 import pandas as pd
 import scipy as sp
 
-import utils as util
 import rdp
 import _pickle as pkl
 import scipy.stats as sts
-
-
 
 # plotting
 import matplotlib as mpl
@@ -32,19 +29,38 @@ import plotly.express as px
 import pylab as pl
 import seaborn as sns
 
+# custom
+import utils as util
+import google_drive as gdrive
+
 # ----------------------------------------------------------------------
 # Data loading
 # ----------------------------------------------------------------------
-def get_log_files(src_dir, verbose=False):
-    try:
-        log_files = sorted([k for k in glob.glob(os.path.join(src_dir, 'raw', '*.log'))], \
-                        key=util.natsort)
-        assert len(log_files)>0, "No log files found in src_dir raw: {}".format(src_dir)
-    except AssertionError:
-        print("Checking parent dir.")
-        log_files = sorted([k for k in glob.glob(os.path.join(src_dir, '*.log'))], \
-                        key=util.natsort)
-    print("Found {} tracking files.".format(len(log_files)))
+def get_log_files(src_dir=None, experiment=None, verbose=False, is_gdrive=False,
+        rootdir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
+
+    if is_gdrive:
+        assert os.path.split(rootdir)[-1]=='Analysis', 'For G-drive, rootdir should be /Edge_Tracking/Aanalysis. Current rootdir is: {}{{}'.format('\n', rootdir)
+        logdf = gdrive.get_info_from_gsheet(experiment)
+        if 'degree' in experiment:
+            exp_key = experiment.split('-degree')[0]
+        else:
+            exp_key = experiment
+        curr_logs = logdf[logdf['experiment']==exp_key].copy()
+        log_files = [os.path.join(rootdir, experiment, 'logs', '{}'.format(f)) \
+                        for f in curr_logs['log'].values]
+        print("{} of {} files found.".format(len(curr_logs['log'].unique()), len(log_files)))
+    else:
+        try:
+            log_files = sorted([k for k in glob.glob(os.path.join(src_dir, 'raw', '*.log'))], \
+                            key=util.natsort)
+            assert len(log_files)>0, "No log files found in src_dir raw: {}".format(src_dir)
+        except AssertionError:
+            print("Checking parent dir.")
+            log_files = sorted([k for k in glob.glob(os.path.join(src_dir, '*.log'))], \
+                            key=util.natsort)
+        print("Found {} tracking files.".format(len(log_files)))
+
     if verbose:
         for fi, fn in enumerate(log_files):
             print(fi, os.path.split(fn)[-1])
@@ -312,16 +328,35 @@ def load_df(fpath):
         df = pkl.load(f)
     return df
 
-def load_combined_df(src_dir, create_new=False, verbose=False, save_errors=True, remove_invalid=True,
-                        process=True, save=True):
+def correct_manual_conditions(df, experiment):
+    if experiment=='vertical_strip/paired_experiments':
+        # update condition names
+        df.loc[df['condition']=='light', 'condition'] = 'lightonly'
+
+    elif experiment=='reverse gradient':
+        df.loc[df['condition']=='cantons_constantodor', 'condition'] = 'constantodor'
+        df.loc[df['condition']=='cantons_reversegradient', 'condition'] = 'reversegradient'
+        df.loc[df['condition']=='cantons_contantodor', 'condition'] = 'constantodor'
+      
+    return df
+
+def load_combined_df(src_dir=None, log_files=None, savedir=None, create_new=False, 
+                verbose=False, save_errors=True, remove_invalid=True, 
+                process=True, save=True,
+                root_dir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
+
+    if src_dir is None:
+        assert log_files is not None, "Must provide src_dir or log_files"
+    elif log_files is None:
+        assert src_dir is not None, "Must provide src_dir or log_files"
 
     # first, check if combined df exists
-    if 'raw' in src_dir:
-        src_dir_temp = os.path.split(src_dir)[0]
-    else:
-        src_dir_temp = src_dir
+    if savedir is None:
+        if src_dir is None:
+            src_dir = os.path.split(log_files[0])[0]
+        savedir = src_dir.split('raw')[0]
 
-    df_fpath = os.path.join(src_dir_temp, 'combined_df.pkl')
+    df_fpath = os.path.join(savedir, 'combined_df.pkl')
     if create_new is False:
         if os.path.exists(df_fpath):
             print("loading existing combined df")
@@ -334,40 +369,35 @@ def load_combined_df(src_dir, create_new=False, verbose=False, save_errors=True,
             create_new=True
 
     if save_errors:
-        savedir = os.path.join(src_dir_temp, 'errors')
-        if not os.path.exists(savedir):
-            os.makedirs(savedir)
-    else:
-        savedir=None
+        if not os.path.exists(os.path.join(savedir, 'errors')):
+            os.makedirs(os.path.join(savedir, 'errors'))
 
-    if create_new:
+    if log_files is None:
         print("Creating new combined df from raw files...")
         log_files = sorted([k for k in glob.glob(os.path.join(src_dir, '*.log'))\
                 if 'lossed tracking' not in k], key=util.natsort)
-        print("Found {} tracking files.".format(len(log_files)))
+    print("Processing {} tracking files.".format(len(log_files)))
 
+    if create_new:
         dlist = []
         for fn in log_files:
-            #air_only = '_Air' in fpath or '_air' in fpath
-            #print(fn, air_only)
             exp, datestr, fly_id, cond = parse_info_from_file(fn)
             if verbose:
                 print(exp, datestr, fly_id, cond)
-            df_ = load_dataframe(fn, mfc_id=None, verbose=False, cond=cond, savedir=savedir, 
-                                    remove_invalid=remove_invalid)
+            df_ = load_dataframe(fn, mfc_id=None, verbose=False, cond=cond, 
+                                savedir=savedir, remove_invalid=remove_invalid)
             dlist.append(df_)
         df = pd.concat(dlist, axis=0)
 
-        if 'vertical_strip/paired_experiments' in src_dir_temp:
-            # update condition names
-            df.loc[df['condition']=='light', 'condition'] = 'lightonly'
+        experiment = savedir.split(root_dir)[-1]
+        df = correct_manual_conditions(df, experiment) 
 
         if process:
             df = process_df(df)
 
-        # save
+       # save
         if save:
-            print("Saving combined df to: {}".format(src_dir_temp))
+            print("Saving combined df to: {}".format(savedir))
             save_df(df, df_fpath)
 
     return df
@@ -2017,10 +2047,3 @@ def plot_metrics_hist(df, plot_vars, hue_var='instrip', row_var=None,
     sns.despine()
 
     # custom legend
-    pl.subplots_adjust(left=0.1, right=0.8, wspace=0.8)
-    legh = util.custom_legend(labels, colors, lw=1)
-    g.axes.flat[-1].legend(handles=legh, labels=labels, bbox_to_anchor=(1,1), loc='upper left', frameon=False)
-
-    return g.fig
-
-
