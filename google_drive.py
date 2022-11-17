@@ -71,7 +71,19 @@ def gsheet_to_dataframe(SPREADSHEET_ID, DATA_TO_PULL='Sheet1',
     #print(df.head())
     return df
 
+def get_sheet_keys():
+
+    gsheet_key =     
+        { '0-degree': '1K_SkaT3JUA2Ik8uiwB6kJMwHnd935bZvZB4If0zh8rY',
+          '15-degree': '1qCrV96jUo24lpZ7-k2-B9RWG5RSQDSgnSn-sFgjS7ys',
+          '45-degree': '15mE8k1Z9PN3_xhQH6mz1AEIyspjlfg5KPkd1aNLs9TM',
+          'T-plume': '14r0TgRUhohZtw2GQgirUseBWXK8NPbyqPzPvAtND7Gs',
+          'constant_vs_gradient': '1Is1t3UtMAycrvpSMvEf6j2Gpc4b5jkEdm7yTIEAxfw8'
+        }
+    return gsheet_key   
+
 def get_sheet_id(experiment):
+
     if experiment == '0-degree':
         sheet_id = '1K_SkaT3JUA2Ik8uiwB6kJMwHnd935bZvZB4If0zh8rY'
     elif experiment == '15-degree':
@@ -101,6 +113,13 @@ def get_info_from_gsheet(experiment):
     '''
 
     SHEET_ID = get_sheet_id(experiment)
+    if SHEET_ID is None:
+        print("Unable to find spreadsheet ID. Existing experiments are:")
+        sheet_keys = get_sheet_keys()
+        for k, v in sheet_keys.items():
+            print(k, v)
+        return None
+
     df = gsheet_to_dataframe(SHEET_ID)
     return df
 
