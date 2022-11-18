@@ -129,7 +129,7 @@ def parse_info_from_filename(fpath, experiment=None,
 
     return experiment, date_str, fly_id, condition
 
-def load_dataframe_test(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
+def load_dataframe_test(fpath, verbose=False, 
                     parse_filename=True):
     '''
     Read raw .log file from behavior and return formatted dataframe.
@@ -138,7 +138,6 @@ def load_dataframe_test(fpath, mfc_id=None, led_id=None, verbose=False, cond='od
 
     Arguments:
         fpath -- (str) Full path to .log file
-        mfc_id -- None, will find mfc var for odor automatically, otherwise "mfc2"
     '''
     # read .log as dataframe 
 
@@ -148,7 +147,7 @@ def load_dataframe_test(fpath, mfc_id=None, led_id=None, verbose=False, cond='od
     return df0
 
 
-def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
+def load_dataframe(fpath, verbose=False, cond=None,
                     parse_filename=True, savedir=None, remove_invalid=True, plot_errors=True):
     '''
     Read raw .log file from behavior and return formatted dataframe.
@@ -157,7 +156,6 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
 
     Arguments:
         fpath -- (str) Full path to .log file
-        mfc_id -- None, will find mfc var for odor automatically, otherwise "mfc2"
     '''
     # read .log as dataframe 
     df0 = pd.read_csv(fpath, encoding='latin' )#, sep=",", skiprows=[1], header=0, 
@@ -429,7 +427,7 @@ def load_combined_df(src_dir=None, log_files=None, savedir=None, create_new=Fals
             if verbose:
                 exp, datestr, fly_id, cond = parse_info_from_filename(fn)
                 print(fi, datestr, fly_id, cond)
-            df_ = load_dataframe(fn, mfc_id=None, verbose=False, cond=None, 
+            df_ = load_dataframe(fn, verbose=False, cond=None, 
                                 savedir=savedir, remove_invalid=remove_invalid)
             dlist.append(df_)
         df = pd.concat(dlist, axis=0)
@@ -1830,7 +1828,7 @@ def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, strip_sep=
 
 def plot_trajectory_from_file(fpath, parse_filename=False, strip_width=10, strip_sep=200, ax=None):
     # load and process the csv data  
-    df0 = load_dataframe(fpath, mfc_id=None, verbose=False, cond=None, 
+    df0 = load_dataframe(fpath, verbose=False, cond=None, 
                 parse_filename=False)
     fly_id=None
     if parse_filename:
