@@ -80,11 +80,11 @@ def main():
     strip_width = args.strip_width
     strip_sep = args.strip_sep
     user_input = False
-    parse_info = False
+    parse_filename = False
 
     fpath = select_logfile(experiment, datestr, user_input=user_input, rootdir=rootdir)
     fig, ax = pl.subplots()
-    butil.plot_trajectory_from_file(fpath, parse_info=parse_info, 
+    butil.plot_trajectory_from_file(fpath, parse_filename=parse_filename, 
                 strip_width=strip_width, strip_sep=strip_sep, ax=ax)
 
     # label figure and save

@@ -38,11 +38,26 @@ import google_drive as gdrive
 # ----------------------------------------------------------------------
 def get_log_files(src_dir=None, experiment=None, verbose=False, is_gdrive=False,
         rootdir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
+    '''
+    Get a list of full paths of all .log files of interest. 
+    Can pull from google sheet, or from directory mounted on local machine.
+    MUST provide either src_dir (local) or experiment (is_gdrive=True).
 
+    Keyword Arguments:
+        src_dir (str) : full path to parent dir of .log files (default: {None})
+        experiment (str) : subfolder(s) from rootdir that leads to .log (default: {None})
+        verbose (bool) : print a bunch of stuff or no (default: {False})
+        is_gdrive (bool) : pull log filenames from google sheet (default: {False})
+        rootdir (str) : base dir of all exp folders (default: {'/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'})
+
+    Returns:
+        _description_
+    '''
     if is_gdrive:
+        # connect to google drive and get info from sheet
         assert os.path.split(rootdir)[-1]=='Analysis', 'For G-drive, rootdir should be /Edge_Tracking/Aanalysis. Current rootdir is: {}{{}'.format('\n', rootdir)
         logdf = gdrive.get_info_from_gsheet(experiment)
-        if 'degree' in experiment:
+        if 'degree' in experiment: # specific to 'degree' experiments
             exp_key = experiment.split('-degree')[0]
         else:
             exp_key = experiment
@@ -50,6 +65,12 @@ def get_log_files(src_dir=None, experiment=None, verbose=False, is_gdrive=False,
         log_files = [os.path.join(rootdir, experiment, 'logs', '{}'.format(f)) \
                         for f in curr_logs['log'].values]
         print("{} of {} files found.".format(len(curr_logs['log'].unique()), len(log_files)))
+        if len(log_files)==0:
+            print("Check experiment name, only the following have sheet IDs: ")
+            gsheet_dict = gdrive.get_sheet_keys()
+            for i, k in enumerate(gsheet_dict.keys()):
+                print('    {}'.format(k))
+            print("Update google_drive.get_sheet_keys() for new sheets.")
     else:
         try:
             log_files = sorted([k for k in glob.glob(os.path.join(src_dir, 'raw', '*.log'))], \
@@ -67,10 +88,10 @@ def get_log_files(src_dir=None, experiment=None, verbose=False, is_gdrive=False,
 
     return log_files
 
-def parse_info_from_file(fpath, experiment=None, 
+def parse_info_from_filename(fpath, experiment=None, 
             rootdir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
     '''
-    _summary_
+    Attempts to find experiment info from filename.
 
     Arguments:
         fpath -- _description_
@@ -99,24 +120,7 @@ def parse_info_from_file(fpath, experiment=None,
     # remove datestr
     date_str = re.search('[0-9]{8}-[0-9]{6}', log_fname)[0]
     cond_str = os.path.splitext(log_fname)[0].split('{}_'.format(date_str))[-1]
-    # 
-#    if re.search('fly\d{1,3}[a-zA-Z]?', cond_str, re.IGNORECASE):
-#        #fly_id = re.search('fly\d{1,3}[a-zA-Z]?', log_fname, re.IGNORECASE)
-#        #condition = cond_str.split('{}_'.format(fly_id))[-1]
-#        condition = [c for c in cond_str.split('{}'.format(fly_id)) \
-#                        if c!=fly_id and len(c)>1]
-#        for ci, c in enumerate(condition):
-#            if c.endswith('_'): 
-#                condition[ci] = c[:-1]
-#            elif c.startswith('_'):
-#                condition[ci] = c[1:]
-#        condition = condition[0]
-#    else:
-#        condition = cond_str
-    #condition = '_'.join([c for c in cond_str.split('_') if fly_id not in c ])
     condition = '_'.join([c for c in cond_str.split('_') if fly_id not in c and not re.search('\d{3}', c)])
-
-    #print(exp_cond, fly_id, condition)
 
     if fly_id is not None:
         fly_id = fly_id.lower()
@@ -126,7 +130,7 @@ def parse_info_from_file(fpath, experiment=None,
     return experiment, date_str, fly_id, condition
 
 def load_dataframe_test(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
-                    parse_info=True):
+                    parse_filename=True):
     '''
     Read raw .log file from behavior and return formatted dataframe.
     Assumes MFC for odor is either 'mfc2_stpt' or 'mfc3_stpt'.
@@ -141,12 +145,11 @@ def load_dataframe_test(fpath, mfc_id=None, led_id=None, verbose=False, cond='od
     df0 = pd.read_csv(fpath) #, encoding='latin' )#, sep=",", skiprows=[1], header=0, 
               #parse_dates=[1]).rename(columns=lambda x: x.strip())
 
-
     return df0
 
 
 def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
-                    parse_info=True, savedir=None, remove_invalid=True):
+                    parse_filename=True, savedir=None, remove_invalid=True, plot_errors=True):
     '''
     Read raw .log file from behavior and return formatted dataframe.
     Assumes MFC for odor is either 'mfc2_stpt' or 'mfc3_stpt'.
@@ -157,13 +160,11 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
         mfc_id -- None, will find mfc var for odor automatically, otherwise "mfc2"
     '''
     # read .log as dataframe 
-
     df0 = pd.read_csv(fpath, encoding='latin' )#, sep=",", skiprows=[1], header=0, 
-              #parse_dates=[1]).rename(columns=lambda x: x.strip())
-
+    # get file info
     fname = os.path.splitext(os.path.split(fpath)[-1])[0]
     df0['filename'] = fname
-
+    df0['fpath'] = fpath
     # split up the timstampe str
     df0['timestamp'] = df0['timestamp -- motor_step_command']\
                             .apply(lambda x: x.split(' -- ')[0])
@@ -184,83 +185,88 @@ def load_dataframe(fpath, mfc_id=None, led_id=None, verbose=False, cond='odor',
         p = util.unwrap_and_constrain_angles(df0['ft_heading'].values)
         df0['ft_heading'] = -p 
 
-    # Calculate some additional vars
-    if 'instrip' not in df0.columns:
-        df0['instrip'] = False
-        if mfc_id is not None:
-            mfc_varname = '{}_stpt'.format(mfc_id)
-            df0.loc[df0[mfc_varname]>0, 'instrip'] = True
-        else: 
-            mfc_vars = [c for c in df0.columns if 'mfc' in c \
-                            and len(df0[c].unique())>1 and c in ['mfc2_stpt', 'mfc3_stpt'] \
-                            and df0[c].dtype=='float64' ] #'float64'))]
-            if len(mfc_vars)>0:
-                assert len(mfc_vars)==1, "More than 1 MFC var found ({})".format(str(mfc_vars))
-                mfc_varname = mfc_vars[0]
-                df0.loc[df0[mfc_varname]>0, 'instrip'] = True
-            # otherwise, only air (no odor)
+    # Calculate MDF odor on or off 
+    mfc_vars = [c for c in df0.columns if 'mfc' in c]
+    mfc_vars0 = [c for c in mfc_vars if len(df0[c].unique())>1] #== 2
+    df0['odor_on'] = False
+    mfc_vars0 = [c for c in mfc_vars if len(df0[c].unique())>1] #== 2
+    if len(mfc_vars0)>0:
+        mfc_vars = [c for c in mfc_vars0 if c!='mfc1_stpt']
+        mfc_varname = mfc_vars[0]
+        df0.loc[df0[mfc_varname]>0, 'odor_on'] = True
+    # otherwise, only air (no odor)
+    else:
+        if verbose:
+            print("... no odor changes detected in MFCs.")
+
+    # check strip type (gradient or constant)
+    is_gradient = len([c for c in mfc_vars0 if len(df0[c].unique())>2]) == 2    
+    df0['strip_type'] = 'gradient' if is_gradient else 'constant'
 
     # check LEDs
-    # if air_only==True, that means that we can ignore LEDs (not powered on)
-    if 'led1_stpt' in df0.columns and 'led_on' not in df0.columns:
-        df0['led_on'] = False
-
-    if 'led1_stpt' in df0.columns:
-#        if cond=='reinforced':
-#            # for newer exp, weird thing where LED signal is 1 for "off" 
-#            led1_vals = df0[~df0['instrip']]['led1_stpt'].unique() 
-#            assert len(led1_vals)==1, "Too many out of strip values for LED: {}".format(str(led1_vals))
-#            if led1_vals[0]==1: # when out of strip, no reinforcement. if has 1 and 0, likely, 1=off
-#                df0['led_on'] = df0['led1_stpt']==0 # 1 is OFF, and 0 is ON (led2 is always 0)
-#            elif led1_vals[0]==0:
-#                df0['led_on'] = df0['led1_stpt']==1 # 1 is ON, and 0 is OFF (led2 is always 0)
+    df0['led_on'] = False
+    if 'led1_stpt' in df0.columns: #and 'led_on' not in df0.columns:
         datestr = int(df0['date'].unique())
         if int(datestr) <= 20200720:
             df0['led_on'] = df0['led1_stpt']==1 
         else:
             df0['led_on'] = df0['led1_stpt']==0
 
-        if cond in ['odor', 'air']:
-            df0['led_on'] = False
-
-#        else: #if cond=='light' or cond=='lightonly':   
-#            # TODO: add check for datestr
-#            df0['led_on'] = df0['led1_stpt']==0 # 20221018, quick fix for now bec dont know when things changed
+    # assign "instrip" -- can be odor or led (odor takes priority)
+    df0['instrip'] = False
+    if True in df0['odor_on'].unique():
+        df0['instrip'] = df0['odor_on']
+    elif True in df0['led_on']:
+        df0['instrip'] = df0['led_on']
 
     # check for wonky skips
-    df0, ft_flag = check_ft_skips(df0, plot=True, remove_invalid=remove_invalid)
-    if ft_flag:
-        print("--> found wonky FTs, check: {}".format(fpath))
+    df0, ft_flag = check_ft_skips(df0, plot=plot_errors, remove_invalid=remove_invalid)
+    if ft_flag and plot_errors:
+        print("--> found bad skips in FTs, check: {}".format(fpath))
         if savedir is not None:
             fname = os.path.splitext(os.path.split(fpath)[-1])[0]
             pl.savefig(os.path.join(savedir, 'wonkyft_{}.png'.format(fname)))
             pl.close()
 
-    if parse_info:
-        # get experiment info
-        exp, datestr, fly_id, cond = parse_info_from_file(fpath)
+    # get experiment info
+    if parse_filename:
+        exp, datestr, fly_id, cond = parse_info_from_filename(fpath)
         df0['experiment'] = exp
         df0['fly_name'] = fly_id
         df0['condition'] = cond
         df0['trial'] = datestr
         if verbose:
             print("Exp: {}, fly ID: {}, cond={}".format(exp, fly_id, cond))
-
         # make fly_id combo of date, fly_id since fly_id is reused across days
         df0['fly_id'] = ['{}-{}'.format(dat, fid) for (dat, fid) in df0[['date', 'fly_name']].values]
         df0['trial_id'] = ['{}_{}'.format(fly_id, trial) for (fly_id, trial) in \
                   df0[['fly_id', 'trial']].values]
+    else:
+        df0['fly_id'] = fname
+        df0['trial_id'] = fname
 
     return df0
 
-
 def check_ft_skips(df, plot=False, remove_invalid=True):
+    '''
+    Check dataframe of current logfile and find large skips.
+
+    Arguments:
+        df (pd.DataFrame) : loaded/processed from load_dataframe()
+
+    Keyword Arguments:
+        plot (bool) : plot errors (default: {False})
+        remove_invalid (bool) : only take first set of valid points (default: {True})
+
+    Returns:
+       df (pd.DataFrame) : either just itself or valid only
+       valid_flag (bool) : True if bad skips detected
+    '''
     bad_skips={}
     max_step_size={'ft_posx': 10, 'ft_posy': 10, 'ft_frame': 100}
     for pvar, stepsize in max_step_size.items():
         if pvar=='ft_frame':
-            first_frame = df['ft_frame'].min()
-            
+            first_frame = df['ft_frame'].min() 
             wonky_skips = np.where(df[pvar]==first_frame+1)[0]
             if len(wonky_skips)>1:
                 wonky_skips = wonky_skips[1:]
@@ -272,21 +278,21 @@ def check_ft_skips(df, plot=False, remove_invalid=True):
             #time_step = df.iloc[wonky_skips[0]]['time'] - df.iloc[wonky_skips[0]-1]['time']
             bad_skips.update({pvar: wonky_skips})
             print("WARNING: found wonky ft skip ({} jumped {:.2f}).".format(pvar, first_step))
-    if len(bad_skips.keys())>0:
-        if plot==True:
-            fig, ax = pl.subplots(figsize=(3,3)) 
-            fname = df['filename'].unique()[0]
-            ax.set_title(fname)
-            ax.plot(df['ft_frame'].diff().abs())
-            cols = ['r', 'b', 'g']
-            for pi, ((pvar, off_ixs), col) in enumerate(zip(bad_skips.items(), cols)):
-                for i in off_ixs:
-                    ax.plot(df.iloc[i].name, pi*100, '*', c=col, label=pvar)
-            ax.legend()
-            pl.show()
+    if plot==True and len(bad_skips.keys())>0:
+        fig, ax = pl.subplots(figsize=(3,3)) 
+        fname = df['filename'].unique()[0]
+        ax.set_title(fname)
+        ax.plot(df['ft_frame'].diff().abs())
+        cols = ['r', 'b', 'g']
+        for pi, ((pvar, off_ixs), col) in enumerate(zip(bad_skips.items(), cols)):
+            for i in off_ixs:
+                ax.plot(df.iloc[i].name, pi*100, '*', c=col, label=pvar)
+        ax.legend()
+        pl.show()
 
-    if len(bad_skips)>0:
-        flag=True
+    flag = len(bad_skips)>0
+    valid_df = df.copy()
+    if flag:
         if 'ft_frame' in bad_skips.keys():
             wonky_skips = bad_skips['ft_frame']
         else:
@@ -298,14 +304,19 @@ def check_ft_skips(df, plot=False, remove_invalid=True):
             print("Removing {} of {} samples.".format(sz_removed, df.shape[0]))
         else:
             valid_df = df.copy()
-    else:
-        flag=False
-        valid_df = df.copy()
 
     return valid_df, flag
 
 def load_dataframe_resampled_csv(fpath):
+    '''
+    Temp loading func for processed .csv files. 
 
+    Arguments:
+        fpath (str) : full path to .csv file. 
+
+    Returns:
+        df (pd.DataFrame) : DF with dtypes formatted to expected. Currently, does not add the other additional vars. See load_dataframe().
+    '''
     df_full = pd.read_table(fpath, sep=",", skiprows=[1], header=0, 
                 parse_dates=[1]).rename(columns=lambda x: x.strip())
     df0 = df_full[['x', 'y', 'seconds', 'instrip']].copy()
@@ -329,6 +340,16 @@ def load_df(fpath):
     return df
 
 def correct_manual_conditions(df, experiment):
+    '''
+    Tries to correct manually-renamed files so that "condition" is accurate.
+
+    Arguments:
+        df -- _description_
+        experiment -- _description_
+
+    Returns:
+        _description_
+    '''
     print("Correcting experiment conditions: {}".format(experiment))
     if experiment=='vertical_strip/paired_experiments':
         # update condition names
@@ -339,15 +360,33 @@ def correct_manual_conditions(df, experiment):
         df.loc[df['condition']=='cantons_reversegradient', 'condition'] = 'reversegradient'
         df.loc[df['condition']=='cantons_contantodor', 'condition'] = 'constantodor'
     
-    elif experiment=='0-degree':
-        df.loc[df['condition']!='cantons_constantodor', 'condition'] = 'cantons_constantodor'  
+    elif 'degree' in experiment:
+        df['condition'] = experiment 
+        #df.loc[df['condition']!='cantons_constantodor', 'condition'] = 'cantons_constantodor'  
     return df
 
 def load_combined_df(src_dir=None, log_files=None, savedir=None, create_new=False, 
                 verbose=False, save_errors=True, remove_invalid=True, 
-                process=True, save=True,
+                process=True, save=True, parse_filename=True, 
                 rootdir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
+    '''
+    _summary_
 
+    Keyword Arguments:
+        src_dir (str, None) : parent dir of .log files (default: {None})
+        log_files (list) : list of full paths to .log files (default: {None})
+        savedir (str, None) : where to save combined DF (default: {parent dir of 1st log file})
+        create_new (bool) : load everything anew (default: {False})
+        verbose (bool): print a bunch of stuff (default: {False})
+        save_errors (bool) : save plots for bad skips, etc. (default: {True})
+        remove_invalid (bool) : only include data that is valid, no big skips (default: {True})
+        process (bool) : do some additional calculations (default: {True})
+        save (bool) : save combined df (default: {True})
+        rootdir (str) : path to base dir of all experiments (default: {'/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'})
+
+    Returns:
+        df (pd.DatFrame) : all (processed) dfs across found log files. 
+    '''
     if src_dir is None:
         assert log_files is not None, "Must provide src_dir or log_files"
         src_dir = os.path.split(log_files[0])[0]
@@ -355,12 +394,12 @@ def load_combined_df(src_dir=None, log_files=None, savedir=None, create_new=Fals
     elif log_files is None:
         assert src_dir is not None, "Must provide src_dir or log_files"
 
-    # first, check if combined df exists
+    # get savedir for saving final .pkl file
     if savedir is None:
         if src_dir is None:
             src_dir = os.path.split(log_files[0])[0]
         savedir = src_dir.split('/raw')[0]
-
+    # first, check if combined df exists
     df_fpath = os.path.join(savedir, 'combined_df.pkl')
     if create_new is False:
         if os.path.exists(df_fpath):
@@ -384,24 +423,24 @@ def load_combined_df(src_dir=None, log_files=None, savedir=None, create_new=Fals
     print("Processing {} tracking files.".format(len(log_files)))
 
     if create_new:
+        # cycle thru log files and combine into 1 mega df
         dlist = []
         for fi, fn in enumerate(log_files):
             if verbose:
-                exp, datestr, fly_id, cond = parse_info_from_file(fn)
+                exp, datestr, fly_id, cond = parse_info_from_filename(fn)
                 print(fi, datestr, fly_id, cond)
             df_ = load_dataframe(fn, mfc_id=None, verbose=False, cond=None, 
                                 savedir=savedir, remove_invalid=remove_invalid)
             dlist.append(df_)
         df = pd.concat(dlist, axis=0)
-
+        # get experiment name
         experiment = src_dir.split('{}/'.format(rootdir))[-1]
         df = correct_manual_conditions(df, experiment) 
-
+        # do some processing, like distance and speed calculations
         if process:
             if verbose:
                 print("---> processing")
             df = process_df(df, verbose=verbose)
-
        # save
         if save:
             print("Saving combined df to: {}".format(savedir))
@@ -477,28 +516,24 @@ def check_entry_left_edge(df, entry_ix=0, return_bool=False):
     '''
     # if start of experiment, 1st odor start centered on animal
     # so look at 2nd odor bout
-    #try:
-    #if df.iloc[0].name==0:
+
     # check first entry *after* odor start that is also UPWIND
     outbouts_after_entry = df[~df['instrip']].loc[entry_ix:] #.iloc[0].name
     upwind_before_entry = [b for b, b_ in outbouts_after_entry.groupby('boutnum') \
                             if b_.iloc[-20:]['ft_posy'].diff().sum()>=0]
     entry_lefts=[]
     for start_at_this_outbout in upwind_before_entry:
-        #start_at_this_outbout = upwind_before[0]
-        # get subset of bouts
+        # get first INSTRIP frame that is after the 1st odor bout and also upwind
         try:
             exit_ix = df[df['boutnum']>=start_at_this_outbout].iloc[0].name
             df_tmp = df.loc[exit_ix:]
             test_entry_ix = df_tmp[df_tmp['instrip']].iloc[0].name
-        except IndexError as e: #Exception as e:
+        except IndexError as e:
             # this is a second (or later) entry
-            #df_tmp = df.copy()
-            #test_entry_ix = entry_ix
             continue
-        # if values are increasing, then entering on border's left edge (animal enters to its right)
+        # if values are increasing, then fly is entering on border's left edge,
+        #  i.e., animal enters to the strip's right
         cumsum = df_tmp.loc[test_entry_ix-20:test_entry_ix]['ft_posx'].diff().sum()
-        #cumsum = df.loc[entry_ix-5:entry_ix]['ft_posx'].diff().cumsum().iloc[-1]
         if cumsum > 0: # entry is from LEFT of strip (values get larger)
             entry_left_edge=True
         elif cumsum < 0: # entry is into RIGHT side of strip
@@ -507,6 +542,7 @@ def check_entry_left_edge(df, entry_ix=0, return_bool=False):
             entry_left_edge=None
         entry_lefts.append((test_entry_ix, entry_left_edge))
 
+    # if majority of entries (>50%) are on the left, left-enterer, otherwise not.
     entry_vals = [i[1] for i in entry_lefts]
     try:
         if sum(entry_vals)/len(entry_vals) > 0.5:
@@ -556,39 +592,19 @@ def get_odor_params(df, strip_width=50, strip_sep=200, get_all_borders=True,
         odor_xmax = strip_width/2.
         odor_start_time = df.iloc[0]['time']
         odor_start_posx, odor_start_posy = (0, 0)
-        currdf = df.copy()
+        #currdf = df.copy()
     else:
-        if entry_ix is None:
-            entry_ix = df[df['instrip']].iloc[0].name
-        entry_left_edge, entry_lefts = check_entry_left_edge(df, entry_ix=entry_ix, return_bool=True)
+        odor_borders = find_strip_borders(df, strip_width=strip_width, strip_sep=strip_sep, 
+                                get_all_borders=get_all_borders, entry_ix=None, is_grid=is_grid)
 
-        currdf = df.loc[entry_ix:].copy()
-        if is_grid and entry_left_edge is not None: # entry_left must be true or false
-            if get_all_borders:
-                ogrid, in_odor = get_odor_grid(currdf, strip_width=strip_width, strip_sep=strip_sep,
-                                    use_crossings=True, verbose=False)
-                odor_borders = list(ogrid.values())
-            else:
-                if entry_left_edge:
-                    odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] 
-                    odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] + strip_width
-                else: # entered right, so entry point is largest val
-                    odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] - strip_width
-                    odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] 
-                odor_borders = (odor_xmin, odor_xmax)
-        else:
-            odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] - (strip_width/2.)
-            odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] + (strip_width/2.)
-            odor_borders = (odor_xmin, odor_xmax)
+        odor_start_time = df[df['instrip']].iloc[0]['time']
+        odor_start_posx = df[df['instrip']].iloc[0]['ft_posx']
+        odor_start_posy = df[df['instrip']].iloc[0]['ft_posy']
 
-        odor_start_time = currdf[currdf['instrip']].iloc[0]['time']
-        odor_start_posx = currdf[currdf['instrip']].iloc[0]['ft_posx']
-        odor_start_posy = currdf[currdf['instrip']].iloc[0]['ft_posy']
-
-    trial_start_time = currdf.iloc[0]['time']
+    trial_start_time = df.iloc[0]['time']
 
     if check_odor:
-        assert odor_start_time == currdf.iloc[df[mfc_var].argmax()]['time'],\
+        assert odor_start_time == df.iloc[df[mfc_var].argmax()]['time'],\
             "ERR: odor start time does not match MFC switch time!"
 
     odor_params = {
@@ -601,18 +617,58 @@ def get_odor_params(df, strip_width=50, strip_sep=200, get_all_borders=True,
 
     return odor_params
 
+def find_strip_borders(df, entry_ix=None, strip_width=50, 
+                        strip_sep=20, is_grid=True, get_all_borders=True):
+    '''
+    Get all strip borders using get_odor_grid() OR taking first values of instrip.
+
+    Arguments:
+        df (pd.DataFrame): DF for 1 log file. 
+
+    Keyword Arguments:
+        entry_ix (int): index of first odor onset (default: {None})
+        strip_width (float, int): width of strip, mm (default: {50})
+        strip_sep (float, int): separation between strips, mm (default: {20})
+        is_grid (bool): True if multiple strips (default: {True})
+        get_all_borders (bool): Get all found borders (default: {True})
+
+    Returns:
+        odor_borders (list) : List of tuples, each indicating (strip_min, strip_max)        
+    '''
+    if entry_ix is None:
+        entry_ix = df[df['instrip']].iloc[0].name
+    entry_left_edge, entry_lefts = check_entry_left_edge(df, entry_ix=entry_ix, return_bool=True)
+    currdf = df.loc[entry_ix:].copy()
+    if entry_left_edge is not None: # entry_left must be true or false
+        if get_all_borders:
+            ogrid, in_odor = get_odor_grid(currdf, 
+                                strip_width=strip_width, strip_sep=strip_sep,
+                                use_crossings=True, verbose=False)
+            odor_borders = list(ogrid.values())
+        else:
+            if entry_left_edge:
+                odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] 
+                odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] + strip_width
+            else: # entered right, so entry point is largest val
+                odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] - strip_width
+                odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] 
+            odor_borders = [(odor_xmin, odor_xmax)]
+    else:
+        odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] - (strip_width/2.)
+        odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] + (strip_width/2.)
+        odor_borders = [(odor_xmin, odor_xmax)]
+
+    return odor_borders
+ 
+
 # ---------------------------------------------------------------------- 
 # Data processing
 # ----------------------------------------------------------------------
-def process_df(df0, xvar='ft_posx', yvar='ft_posy', 
-                conditions=None, bout_thresh=0.5, 
+def process_df(df, xvar='ft_posx', yvar='ft_posy', 
+                bout_thresh=0.5, 
                 smooth=False, window_size=11, verbose=False):
-    if conditions is not None:
-        df = df0[df0['condition'].isin(conditions)].copy()
-    else:
-        df = df0.copy()
     dlist=[]
-    for trial_id, df_ in df.groupby(['trial_id', 'condition']):
+    for trial_id, df_ in df.groupby(['trial_id']):
         if verbose:
             print("... processing {}".format(trial_id))
         # parse in and out bouts
@@ -620,20 +676,22 @@ def process_df(df0, xvar='ft_posx', yvar='ft_posy',
         # filter in and out bouts by min. duration 
         df_ = filter_bouts_by_dur(df_, bout_thresh=bout_thresh, 
                             bout_varname='boutnum', count_varname='instrip', verbose=False)
+        # add some calculations
         df_ = calculate_speed(df_, xvar=xvar, yvar=yvar)
         df_ = calculate_distance(df_, xvar=xvar, yvar=yvar)
+        # smooth?
         if smooth:
-            #for varname in ['ft_posx', 'ft_posy']:
             df_ = smooth_traces(df_, window_size=window_size, return_same=True)
         dlist.append(df_)
-
-    DF=pd.concat(dlist, axis=0) #.reset_index(drop=True)
+    DF=pd.concat(dlist, axis=0) # dont reset index
+    DF['bout_type'] = 'outstrip'
+    DF.loc[DF['instrip'], 'bout_type'] = 'instrip'
 
     return DF
 
 def calculate_turn_angle(df, xvar='ft_posx', yvar='ft_posy'):
     '''
-    Calculate angle bw positions. 
+    Calculate angle bw positions (arctan2(gradx, grady)). 
 
     Arguments:
         df -- _description_
@@ -643,10 +701,10 @@ def calculate_turn_angle(df, xvar='ft_posx', yvar='ft_posy'):
         yvar -- _description_ (default: {'ft_posy'})
 
     Returns:
-        _description_
+       df with 'turn_angle' added. 
     '''
     #ang_ = np.arctan2(np.gradient(df[yvar].values), np.gradient(df[xvar].values))
-    df['turn_angle'] = np.arctan2(np.gradient(df[yvar]), np.gradient(df[xvar]))
+    df['turn_angle'] = np.arctan2(np.gradient(df[xvar]), np.gradient(df[yvar]))
     #ang_ = np.arctan2(df[yvar].diff(), df[xvar].diff())
     #df['turn_angle'] = ang_
     
@@ -754,14 +812,9 @@ def parse_bouts(df, count_varname='instrip', bout_varname='boutnum', verbose=Fal
     if bout_varname in df.columns and verbose:
         print("WARNING: Column {} already exists. Overwriting...".format(bout_varname))
 
-    #new_varname = '{}X'.format(count_varname)
-    #df[new_varname] = df[count_varname].shift()
-    #df[bout_varname] = (df[count_varname] != df[new_varname]).cumsum()
-
     df[bout_varname] = (df[count_varname] != df[count_varname].shift()).cumsum()
 
     return df
-
 
 def get_bout_durs(df, bout_varname='boutnum'):
     '''
@@ -846,6 +899,21 @@ def smooth_traces_each(df, varname='speed', window_size=11, return_same=True):
         return smooth_t
 
 def smooth_traces(df, xvar='ft_posx', yvar='ft_posy', window_size=13, return_same=True):
+    '''
+    Smooths x- and y-vars, which seems to be more accurate than interpolating over 2d.
+
+    Arguments:
+        df -- _description_
+
+    Keyword Arguments:
+        xvar -- _description_ (default: {'ft_posx'})
+        yvar -- _description_ (default: {'ft_posy'})
+        window_size -- _description_ (default: {13})
+        return_same -- _description_ (default: {True})
+
+    Returns:
+        _description_
+    '''
     for v in [xvar, yvar]:
         df = smooth_traces_each(df, varname=v, window_size=window_size, return_same=True)
 
@@ -929,7 +997,8 @@ def get_odor_grid(df, strip_width=10, strip_sep=200, use_crossings=True,
         odor_grid = {'c0': (curr_odor_xmin, curr_odor_xmax)}
         odor_flag = False
     else:
-        odor_grid = find_odor_grid(df, strip_width=strip_width, strip_sep=strip_sep)
+        odor_grid = find_odor_grid(df, 
+                        strip_width=strip_width, strip_sep=strip_sep)
         odor_grid = check_odor_grid(df, odor_grid, strip_width=strip_width, strip_sep=strip_sep, 
                         use_crossings=use_crossings, use_mean=use_mean, verbose=verbose)
         odor_flag = True
@@ -958,8 +1027,7 @@ def find_borders(df, strip_width = 10, strip_spacing = 200):
     return x_borders #all_x_borders, all_y_borders
 
  
-def find_odor_grid(df, strip_width=10, strip_sep=200, plot=True): #use_crossings=True,
-#                   use_mean=True, verbose=True):
+def find_odor_grid(df, strip_width=10, strip_sep=200, plot=True): 
     '''
     Finds the odor boundaries based on odor width and grid separation
 
@@ -1058,7 +1126,7 @@ def check_odor_grid(df, odor_grid, strip_width=10, strip_sep=200, use_crossings=
                 print("... Estimated ctr is {:.2f}".format(ctr))
             if not crossed_edge:
                 # at start of odor, animal doesnt move
-                print("... Using default odor min/max, animal did not move in odor")
+                print("... Using default odor min/max, animal {} did not move in odor".format(df['fly_id'].unique()[0]))
                 traveled_xmin = curr_odor_xmin
                 traveled_xmax = curr_odor_xmax
             else:
@@ -1113,7 +1181,8 @@ def are_there_crossings(currdf, curr_odor_xmin, curr_odor_xmax):
         return True
 
 
-def get_boundary_from_crossings(df, curr_odor_xmin, curr_odor_xmax, ix=0,
+def get_boundary_from_crossings(df, curr_odor_xmin, curr_odor_xmax, 
+                     ix=0,
                     strip_sep=200, strip_width=10, use_mean=True,
                     verbose=False):
     # get left and right edge crossings
@@ -1684,7 +1753,7 @@ def get_bout_metrics(df_, group_vars=['fly_id', 'condition', 'boutnum']):
     lin_metrics = df_[lin_vars].mean() #.reset_index(drop=True)
     
     misc = pd.Series({
-        'duration': df_['time'].max() - df_['time'].min(),
+        'duration': df_['time'].iloc[-1] - df_['time'].iloc[0],
         'upwind_dist_range': df_['ft_posy'].max() - df_['ft_posy'].min(),
         'upwind_dist_firstlast': df_['ft_posy'].iloc[-1] - df_['ft_posy'].iloc[0],
         'crosswind_dist_range': df_['ft_posx'].max() - df_['ft_posx'].min(),
@@ -1694,15 +1763,16 @@ def get_bout_metrics(df_, group_vars=['fly_id', 'condition', 'boutnum']):
         'rel_time': df_['rel_time'].iloc[0]
     }) #, index=[0])
     
-    metrics = pd.DataFrame(pd.concat([misc, lin_metrics, single_metrics])).T    
-    
+    #metrics = pd.DataFrame(pd.concat([misc, lin_metrics, single_metrics])).T    
+    metrics = pd.concat([misc, lin_metrics, single_metrics]) 
     return metrics
 
 
 
 
 
-def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, xvar='ft_posx', yvar='ft_posy',
+def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, strip_sep=200, 
+                    xvar='ft_posx', yvar='ft_posy',
                     laststop_color='b', stop_color=[0.9]*3, theta_range=(-np.pi, np.pi), offset=20,
                     theta_cmap='hsv', instrip_palette={True: 'r', False: 'w'}, xlims=None,
                     stop_marker='.', stop_markersize=3, lw=0):
@@ -1711,8 +1781,11 @@ def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, xvar='ft_p
     # Construct figure and axis to plot on
     fig = pl.figure( figsize=(8, 6))
     ax = fig.add_subplot(1, 2, 1)
-    oparams = get_odor_params(df_, strip_width=strip_width, is_grid=True)
-    ax= plot_trajectory(df_, ax=ax, odor_bounds=oparams['odor_boundary'], 
+    #oparams = get_odor_params(df_, strip_width=strip_width, is_grid=True)
+    strip_borders = find_strip_borders(df_, strip_width=strip_width, strip_sep=strip_sep, 
+                                entry_ix=None)
+
+    ax= plot_trajectory(df_, ax=ax, odor_bounds=strip_borders, #oparams['odor_boundary'], 
                               palette=instrip_palette)
     # plot all stops
     ax.scatter(df_[df_['stopped']][xvar], df_[df_['stopped']][yvar], marker=stop_marker,
@@ -1755,27 +1828,29 @@ def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, xvar='ft_p
 # Visualization
 # ----------------------------------------------------------------------
 
-def plot_trajectory_from_file(fpath, parse_info=False,
-            strip_width=10, strip_sep=200, ax=None):
+def plot_trajectory_from_file(fpath, parse_filename=False, strip_width=10, strip_sep=200, ax=None):
     # load and process the csv data  
     df0 = load_dataframe(fpath, mfc_id=None, verbose=False, cond=None, 
-                parse_info=False)
+                parse_filename=False)
     fly_id=None
-    if parse_info:
+    if parse_filename:
         # try to parse experiment details from the filename
-        exp, datestr, fid, cond = parse_info_from_file(fpath)
+        exp, datestr, fid, cond = parse_info_from_filename(fpath)
         print('Experiment: {}{}Fly ID: {}{}Condition: {}'.format(exp, '\n', fid, '\n', cond))
         fly_id = df0['fly_id'].unique()[0]
+    else:
+        fly_id = os.path.split(fpath)[-1]
+        df0['fly_id'] = fly_id
 
     # get experimentally determined odor boundaries:
-    ogrid, in_odor = get_odor_grid(df0, strip_width=strip_width, strip_sep=strip_sep,
-                            use_crossings=True, verbose=False )
+    #ogrid, in_odor = get_odor_grid(df0, strip_width=strip_width, 
+    #                        strip_sep=strip_sep, use_crossings=True, verbose=False )
     #(odor_xmin, odor_xmax), = ogrid.values()
-    odor_bounds = list(ogrid.values())
-
+    #odor_bounds = list(ogrid.values())
+    strip_borders = find_strip_borders(df0, strip_width=strip_width, strip_sep=strip_sep, 
+                                entry_ix=None)
     title = os.path.splitext(os.path.split(fpath)[-1])[0]
-    print(odor_bounds) 
-    plot_trajectory(df0, odor_bounds=odor_bounds, title=title, ax=ax)
+    plot_trajectory(df0, odor_bounds=strip_borders, title=title, ax=ax)
 
     return ax
 
@@ -1800,7 +1875,6 @@ def plot_trajectory(df0, odor_bounds=[], ax=None,
     if df0[df0['instrip']].shape[0]>0:
         odor_start_ix = df0[df0['instrip']].iloc[0][yvar]
         ax.axhline(y=odor_start_ix, color='w', lw=0.5, linestyle=':')
-
     ax.legend(bbox_to_anchor=(1,1), loc='upper left', title=hue_varname, frameon=False)
     ax.set_title(title)
     xmax=500
@@ -1823,9 +1897,9 @@ def plot_odor_corridor(ax, odor_xmin=-100, odor_xmax=100, \
                     offset=10):
     ax.axvline(odor_xmin, color=odor_linecolor, lw=odor_linewidth)
     ax.axvline(odor_xmax, color=odor_linecolor, lw=odor_linewidth)
-    xmin = min([odor_xmin-offset, min(ax.get_xlim())])
-    xmax = max([odor_xmax + offset, min(ax.get_xlim())])
-    ax.set_xlim([xmin, xmax])
+    #xmin = min([odor_xmin-offset, min(ax.get_xlim())])
+    #xmax = max([odor_xmax + offset, min(ax.get_xlim())])
+    #ax.set_xlim([xmin, xmax])
     #ax.axhline(odor_start_posy, color=startpos_linecolor, 
     #            lw=startpos_linewidth, linestyle=':')
 
@@ -1908,18 +1982,22 @@ def get_quiverplot_inputs(df_, xvar='ft_posx', yvar='ft_posy'):
     return x, y, uu, vv
 
 
-def plot_all_flies(df_, hue_varname='instrip', 
+def plot_all_flies(df_, hue_varname='instrip',  plot_borders=True,
                     palette={True: 'r', False: 'w'}, strip_width=50, col_wrap=4):
+    fly_ids = list(df_.groupby('fly_id').groups.keys())
     g = sns.FacetGrid(df_, col='fly_id', col_wrap=col_wrap,
-                    col_order=list(df_.groupby('fly_id').groups.keys()))
+                    col_order=fly_ids)
     g.map_dataframe(sns.scatterplot, x="ft_posx", y="ft_posy", hue=hue_varname,
                 s=0.5, edgecolor='none', palette=palette) #, palette=palette)
     g.set_titles(row_template = '{row_name}', col_template = '{col_name}', size=6)
-    # add strip borders
-    for ax in g.axes.flat:
-        odor_half = strip_width/2.
-        plot_odor_corridor(ax, odor_xmin=-odor_half, odor_xmax=odor_half) 
-        ax.set_xlim([-300, 300])
+    if plot_borders:
+        # add strip borders
+        for ax, fly_id in zip(g.axes.flat, fly_ids):
+            odor_borders = find_strip_borders(df_[df_['fly_id']==fly_id])  
+            #odor_half = strip_width/2.
+            for (odor_xmin, odor_xmax) in odor_borders:
+                plot_odor_corridor(ax, odor_xmin=odor_xmin, odor_xmax=odor_xmax) 
+            ax.set_xlim([-300, 300])
 
     return g.fig
 
@@ -1954,18 +2032,25 @@ def plot_fly_by_condition(plotdf, strip_width=50, hue_varname='instrip',
 
     return g.fig
 
+def get_id_columns():
+    id_cols = ['fly_id', 'trial_id', 'condition', 'strip_type', 'instrip', \
+            'bout_type', 'inout-strip', 'boutnum']
+    return id_cols
+
 def plot_metrics_displot(df, plot_vars, hue_var='instrip', row_var=None,
                     labels=[True, False], colors=['r', 'w'],
                     limit_xaxis=False, xlim=None, fontsize=7,
                     sharex=False, sharey=True, height=2):
     curr_palette = dict((k, v) for k, v in zip(labels, colors))
-    melt_vars = [c for c in df.columns if c not in plot_vars]
+    #melt_vars = [c for c in df.columns if c not in plot_vars]
 
-    melt_vars = [c for c in df.columns if c not in plot_vars]
-    df_ = df.melt(melt_vars, var_name='varname', value_name='varvalue')
+    id_cols = get_id_columns()
+    id_vars = [c for c in id_cols if c in df.columns]
+    df_ = df.melt(id_vars, var_name='varname', value_name='varvalue')
+    plotdf = df_[df_['varname'].isin(plot_vars)]
 
     g = sns.displot(
-        data = df_,
+        data = plotdf,
         x='varvalue', col='varname', hue=hue_var, row=row_var,
         aspect=1, height=height, lw=1, kind='ecdf',
         palette=curr_palette, 
@@ -2013,10 +2098,11 @@ def plot_metrics_hist(df, plot_vars, hue_var='instrip', row_var=None,
     '''
     curr_palette=dict((k, v) for k, v in zip(labels, colors))
 
-    melt_vars = [c for c in df.columns if c not in plot_vars]
-    df_ = df.melt(melt_vars, var_name='varname', value_name='varvalue')
-
-    g = sns.FacetGrid(df_, col='varname', row=row_var,
+    id_cols = get_id_columns()
+    id_vars = [c for c in id_cols if c in df.columns]
+    df_ = df.melt(id_vars, var_name='varname', value_name='varvalue')
+    plotdf = df_[df_['varname'].isin(plot_vars)]
+    g = sns.FacetGrid(plotdf, col='varname', row=row_var,
                         sharex=sharex, sharey=sharey)
     g.map_dataframe(sns.histplot, x='varvalue', hue=hue_var,
                 fill=False, element='step', 
@@ -2041,3 +2127,18 @@ def plot_metrics_hist(df, plot_vars, hue_var='instrip', row_var=None,
 
     # custom legend
     return g.fig
+
+
+def check_mfc_vars(df0_all, file_id='filename'):
+    mfc_vars = [c for c in df0_all.columns if 'mfc' in c]
+    melt_cols = [c for c in df0_all.columns if c not in mfc_vars]
+    meltdf = df0_all.melt(melt_cols)
+    g = sns.FacetGrid(meltdf, col=file_id, col_wrap=5, height=2, sharex=False)
+    g.map_dataframe(sns.scatterplot, x='ft_frame', y='value', hue='variable', 
+                    edgecolor='none', s=3)
+    g.set_titles(row_template='{row_name}', col_template='{col_name}', size=6)
+    g.axes.flat[-1].legend(bbox_to_anchor=(1,1), loc='upper left', fontsize=7)
+    pl.subplots_adjust(top=0.9)
+
+    return g.fig
+
