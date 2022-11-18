@@ -329,6 +329,7 @@ def load_df(fpath):
     return df
 
 def correct_manual_conditions(df, experiment):
+    print("Correcting experiment conditions: {}".format(experiment))
     if experiment=='vertical_strip/paired_experiments':
         # update condition names
         df.loc[df['condition']=='light', 'condition'] = 'lightonly'
@@ -337,16 +338,20 @@ def correct_manual_conditions(df, experiment):
         df.loc[df['condition']=='cantons_constantodor', 'condition'] = 'constantodor'
         df.loc[df['condition']=='cantons_reversegradient', 'condition'] = 'reversegradient'
         df.loc[df['condition']=='cantons_contantodor', 'condition'] = 'constantodor'
-      
+    
+    elif experiment=='0-degree':
+        df.loc[df['condition']!='cantons_constantodor', 'condition'] = 'cantons_constantodor'  
     return df
 
 def load_combined_df(src_dir=None, log_files=None, savedir=None, create_new=False, 
                 verbose=False, save_errors=True, remove_invalid=True, 
                 process=True, save=True,
-                root_dir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
+                rootdir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
 
     if src_dir is None:
         assert log_files is not None, "Must provide src_dir or log_files"
+        src_dir = os.path.split(log_files[0])[0]
+        src_dir = src_dir.split('/log')[0]
     elif log_files is None:
         assert src_dir is not None, "Must provide src_dir or log_files"
 
@@ -354,7 +359,7 @@ def load_combined_df(src_dir=None, log_files=None, savedir=None, create_new=Fals
     if savedir is None:
         if src_dir is None:
             src_dir = os.path.split(log_files[0])[0]
-        savedir = src_dir.split('raw')[0]
+        savedir = src_dir.split('/raw')[0]
 
     df_fpath = os.path.join(savedir, 'combined_df.pkl')
     if create_new is False:
@@ -380,20 +385,22 @@ def load_combined_df(src_dir=None, log_files=None, savedir=None, create_new=Fals
 
     if create_new:
         dlist = []
-        for fn in log_files:
-            exp, datestr, fly_id, cond = parse_info_from_file(fn)
+        for fi, fn in enumerate(log_files):
             if verbose:
-                print(exp, datestr, fly_id, cond)
-            df_ = load_dataframe(fn, mfc_id=None, verbose=False, cond=cond, 
+                exp, datestr, fly_id, cond = parse_info_from_file(fn)
+                print(fi, datestr, fly_id, cond)
+            df_ = load_dataframe(fn, mfc_id=None, verbose=False, cond=None, 
                                 savedir=savedir, remove_invalid=remove_invalid)
             dlist.append(df_)
         df = pd.concat(dlist, axis=0)
 
-        experiment = savedir.split(root_dir)[-1]
+        experiment = src_dir.split('{}/'.format(rootdir))[-1]
         df = correct_manual_conditions(df, experiment) 
 
         if process:
-            df = process_df(df)
+            if verbose:
+                print("---> processing")
+            df = process_df(df, verbose=verbose)
 
        # save
         if save:
@@ -599,19 +606,21 @@ def get_odor_params(df, strip_width=50, strip_sep=200, get_all_borders=True,
 # ----------------------------------------------------------------------
 def process_df(df0, xvar='ft_posx', yvar='ft_posy', 
                 conditions=None, bout_thresh=0.5, 
-                smooth=False, window_size=11):
+                smooth=False, window_size=11, verbose=False):
     if conditions is not None:
         df = df0[df0['condition'].isin(conditions)].copy()
     else:
         df = df0.copy()
     dlist=[]
-    for (fly_id, cond), df_ in df.groupby(['fly_id', 'condition']):
+    for trial_id, df_ in df.groupby(['trial_id', 'condition']):
+        if verbose:
+            print("... processing {}".format(trial_id))
         # parse in and out bouts
         df_ = parse_bouts(df_, count_varname='instrip', bout_varname='boutnum') # 1-count
         # filter in and out bouts by min. duration 
         df_ = filter_bouts_by_dur(df_, bout_thresh=bout_thresh, 
                             bout_varname='boutnum', count_varname='instrip', verbose=False)
-        df_ = calculate_speed(df_, xvar=xvar, yvar=yvar) # smooth=False, window_size=11, return_same=True)
+        df_ = calculate_speed(df_, xvar=xvar, yvar=yvar)
         df_ = calculate_distance(df_, xvar=xvar, yvar=yvar)
         if smooth:
             #for varname in ['ft_posx', 'ft_posy']:
@@ -810,7 +819,6 @@ def filter_bouts_by_dur(df, bout_thresh=0.5, bout_varname='boutnum',
         print("Found {} bouts too short (thr={:.2f} sec)".format(len(too_short), bout_thresh))
     # Check for too short bouts
     assert df[count_varname].dtype == bool, "ERR: State <{}> is not bool.".format(count_varname)
-
     while len(too_short) > 0:
         for boutnum, df_ in df.groupby(bout_varname):
             if boutdurs[boutnum] < bout_thresh:
@@ -2017,21 +2025,6 @@ def plot_metrics_hist(df, plot_vars, hue_var='instrip', row_var=None,
     if plot_log:
         g.set(yscale='log')
 
-#    fig, axn = pl.subplots(1, len(plot_vars), figsize=(8, 3))
-#    for ai, (ax, varname) in enumerate(zip(axn, plot_vars)):
-#        #varname = '{}_log'.format(pvar) if plot_log else pvar
-#        sns.histplot(data=df, x=varname, hue=hue_var, ax=ax, #legend=True, 
-#                     cumulative=cumulative, fill=False, element='step', 
-#                     stat=stat, kde=kde, lw=1,
-#                     palette=curr_palette)
-#        ax.legend_.remove()
-#        if plot_log:
-#            xmin = np.ceil(df[varname].min())
-#            if xmin<0:
-#                print(varname)
-#            ax.set(xscale ='log')
-#            ax.set_xlim([xmin, ax.get_xlim()[-1]])
-
     g.set_titles(row_template='{row_name}', col_template='{col_name}', size=6)
     for ax in g.axes.flat:
         tstr = ax.get_title()
@@ -2047,3 +2040,4 @@ def plot_metrics_hist(df, plot_vars, hue_var='instrip', row_var=None,
     sns.despine()
 
     # custom legend
+    return g.fig
