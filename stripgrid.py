@@ -61,7 +61,7 @@ def main():
         help='Pull log file info for EXPERIMENT from google-sheet')
     parser.add_argument('-p', '--parse_filename', type=bool, default=False,
         help='Parse filename')
-    parser.add_argument('-c', '--col_wrap', type=int, default=4,
+    parser.add_argument('-c', '--col_wrap', type=int, default=5,
         help='col wrap for plot_group')
     parser.add_argument('--sharex', type=bool, default=True,
         help='if plot_group, sharex')
@@ -107,19 +107,20 @@ def main():
         os.makedirs(savedir)
 
     if pull_gsheet:
-        log_files = butil.get_log_files(experiment='0-degree', 
+        log_files = butil.get_log_files(experiment=experiment,
                                 verbose=False, rootdir=rootdir, is_gdrive=True)
     else:
         log_files = butil.get_log_files(src_dir, verbose=True)
 
     # # Load dataframes
-    df0 = butil.load_combined_df(log_files, create_new=create_new, 
-                                    remove_invalid=remove_invalid,
+    df0 = butil.load_combined_df(log_files=log_files, create_new=create_new, 
+                                    remove_invalid=remove_invalid, save_errors=False,
                                     savedir=savedir, parse_filename=parse_filename)
-    condition_list = df0['condition'].unique()
-    print("There are {} unique conditions:".format(len(condition_list)))
-    for ci, cond in enumerate(condition_list):
-        print(ci, cond)  
+    if 'condition' in df0.columns:
+        condition_list = df0['condition'].unique()
+        print("There are {} unique conditions:".format(len(condition_list)))
+        for ci, cond in enumerate(condition_list):
+            print(ci, cond)  
 
     # ## plot traces
     hue_varname='instrip'

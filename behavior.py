@@ -148,7 +148,7 @@ def load_dataframe_test(fpath, verbose=False,
 
 
 def load_dataframe(fpath, verbose=False, cond=None,
-                    parse_filename=True, savedir=None, remove_invalid=True, plot_errors=True):
+                    parse_filename=True, savedir=None, remove_invalid=True, plot_errors=False):
     '''
     Read raw .log file from behavior and return formatted dataframe.
     Assumes MFC for odor is either 'mfc2_stpt' or 'mfc3_stpt'.
@@ -214,20 +214,24 @@ def load_dataframe(fpath, verbose=False, cond=None,
     df0['instrip'] = False
     if True in df0['odor_on'].unique():
         df0['instrip'] = df0['odor_on']
-    elif True in df0['led_on']:
+    elif True in df0['led_on'].unique():
         df0['instrip'] = df0['led_on']
 
     # check for wonky skips
-    df0, ft_flag = check_ft_skips(df0, plot=plot_errors, remove_invalid=remove_invalid)
-    if ft_flag and plot_errors:
+    figpath = os.path.join(savedir, 'errors', 'wonkyft_{}.png'.format(fname)) if savedir is not None else None
+    if not os.path.exists(os.path.join(savedir, 'errors')):
+        os.makedirs(os.path.join(savedir, 'errors'))
+
+    if figpath is None and plot_errors is True:
+        print("[warning]: Provide savedir to save errors fig")
+    df0, ft_flag = check_ft_skips(df0, plot=plot_errors, remove_invalid=remove_invalid,
+                    figpath=figpath)
+    if ft_flag:
         print("--> found bad skips in FTs, check: {}".format(fpath))
-        if savedir is not None:
-            fname = os.path.splitext(os.path.split(fpath)[-1])[0]
-            pl.savefig(os.path.join(savedir, 'wonkyft_{}.png'.format(fname)))
-            pl.close()
 
     # get experiment info
     if parse_filename:
+        print("... parsing info from filename")
         exp, datestr, fly_id, cond = parse_info_from_filename(fpath)
         df0['experiment'] = exp
         df0['fly_name'] = fly_id
@@ -242,10 +246,11 @@ def load_dataframe(fpath, verbose=False, cond=None,
     else:
         df0['fly_id'] = fname
         df0['trial_id'] = fname
+        df0['condition'] = 'none'
 
     return df0
 
-def check_ft_skips(df, plot=False, remove_invalid=True):
+def check_ft_skips(df, plot=False, remove_invalid=True, figpath=None):
     '''
     Check dataframe of current logfile and find large skips.
 
@@ -286,7 +291,10 @@ def check_ft_skips(df, plot=False, remove_invalid=True):
             for i in off_ixs:
                 ax.plot(df.iloc[i].name, pi*100, '*', c=col, label=pvar)
         ax.legend()
-        pl.show()
+        #pl.show()
+        if figpath is not None:
+            pl.savefig(figpath)
+        pl.close()
 
     flag = len(bad_skips)>0
     valid_df = df.copy()
@@ -424,11 +432,15 @@ def load_combined_df(src_dir=None, log_files=None, savedir=None, create_new=Fals
         # cycle thru log files and combine into 1 mega df
         dlist = []
         for fi, fn in enumerate(log_files):
-            if verbose:
-                exp, datestr, fly_id, cond = parse_info_from_filename(fn)
-                print(fi, datestr, fly_id, cond)
-            df_ = load_dataframe(fn, verbose=False, cond=None, 
-                                savedir=savedir, remove_invalid=remove_invalid)
+            if verbose is True:
+                try:
+                    exp, datestr, fly_id, cond = parse_info_from_filename(fn) 
+                    print(fi, datestr, fly_id, cond)
+                except Exception as e:
+                    print(fname)
+                    pass
+            df_ = load_dataframe(fn, verbose=False, cond=None, parse_filename=parse_filename,
+                                savedir=savedir, remove_invalid=remove_invalid, plot_errors=save_errors)
             dlist.append(df_)
         df = pd.concat(dlist, axis=0)
         # get experiment name
@@ -616,7 +628,7 @@ def get_odor_params(df, strip_width=50, strip_sep=200, get_all_borders=True,
     return odor_params
 
 def find_strip_borders(df, entry_ix=None, strip_width=50, 
-                        strip_sep=20, is_grid=True, get_all_borders=True):
+                        strip_sep=200, is_grid=True, get_all_borders=True):
     '''
     Get all strip borders using get_odor_grid() OR taking first values of instrip.
 
@@ -634,7 +646,14 @@ def find_strip_borders(df, entry_ix=None, strip_width=50,
         odor_borders (list) : List of tuples, each indicating (strip_min, strip_max)        
     '''
     if entry_ix is None:
-        entry_ix = df[df['instrip']].iloc[0].name
+        try:
+            entry_ix = df[df['instrip']].iloc[0].name
+        except IndexError:
+            entry_ix=None
+            odor_xmin = -(strip_width/2.)
+            odor_xmax = strip_width/2.
+            return [(odor_xmin, odor_xmax)]
+ 
     entry_left_edge, entry_lefts = check_entry_left_edge(df, entry_ix=entry_ix, return_bool=True)
     currdf = df.loc[entry_ix:].copy()
     if entry_left_edge is not None: # entry_left must be true or false
