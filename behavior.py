@@ -231,7 +231,7 @@ def load_dataframe(fpath, verbose=False, cond=None,
 
     # get experiment info
     if parse_filename:
-        print("... parsing info from filename")
+        #print("... parsing info from filename")
         exp, datestr, fly_id, cond = parse_info_from_filename(fpath)
         df0['experiment'] = exp
         df0['fly_name'] = fly_id
@@ -503,17 +503,17 @@ def check_entryside_and_flip(df_, strip_width=50, odor_dict=None, verbose=False)
                 # util.rotate_coordinates(df1['ft_posx'], df1['ft_posy'], -np.pi)
             df_copy.loc[tmpdf.index, 'ft_posx'] = xp
             df_copy.loc[tmpdf.index, 'ft_posy'] = yp
-            border_flip1, _ = util.fliplr_coordinates(oparams['odor_boundary'][0], 0) 
-            border_flip2, _ = util.fliplr_coordinates(oparams['odor_boundary'][1], 0)
+            border_flip1, _ = util.fliplr_coordinates(oparams['odor_boundary'][0][0], 0) 
+            border_flip2, _ = util.fliplr_coordinates(oparams['odor_boundary'][0][1], 0)
             df_copy.loc[tmpdf.index, 'flipped'] = True
         else:
-            border_flip1, border_flip2 = oparams['odor_boundary']        
+            border_flip1, border_flip2 = oparams['odor_boundary'][0]
         
         new_borders.update({'c{}'.format(entry_ix): (border_flip1, border_flip2)})
             
     return df_copy, new_borders
 
-def check_entry_left_edge(df, entry_ix=0, return_bool=False):
+def check_entry_left_edge(df, entry_ix=None, return_bool=False):
     '''
     Check whether fly enters from left/right of corridor based on prev tsteps.
 
@@ -604,8 +604,10 @@ def get_odor_params(df, strip_width=50, strip_sep=200, get_all_borders=True,
         odor_start_posx, odor_start_posy = (0, 0)
         #currdf = df.copy()
     else:
-        odor_borders = find_strip_borders(df, strip_width=strip_width, strip_sep=strip_sep, 
-                                get_all_borders=get_all_borders, entry_ix=None, is_grid=is_grid)
+        odor_borders, entry_left_edge = find_strip_borders(df, 
+                                strip_width=strip_width, strip_sep=strip_sep, 
+                                get_all_borders=get_all_borders, entry_ix=None, is_grid=is_grid,
+                                get_entry_side=True)
 
         odor_start_time = df[df['instrip']].iloc[0]['time']
         odor_start_posx = df[df['instrip']].iloc[0]['ft_posx']
@@ -627,7 +629,7 @@ def get_odor_params(df, strip_width=50, strip_sep=200, get_all_borders=True,
 
     return odor_params
 
-def find_strip_borders(df, entry_ix=None, strip_width=50, 
+def find_strip_borders(df, entry_ix=None, strip_width=50, get_entry_side=False,
                         strip_sep=200, is_grid=True, get_all_borders=True):
     '''
     Get all strip borders using get_odor_grid() OR taking first values of instrip.
@@ -653,7 +655,7 @@ def find_strip_borders(df, entry_ix=None, strip_width=50,
             odor_xmin = -(strip_width/2.)
             odor_xmax = strip_width/2.
             return [(odor_xmin, odor_xmax)]
- 
+     
     entry_left_edge, entry_lefts = check_entry_left_edge(df, entry_ix=entry_ix, return_bool=True)
     currdf = df.loc[entry_ix:].copy()
     if entry_left_edge is not None: # entry_left must be true or false
@@ -675,7 +677,10 @@ def find_strip_borders(df, entry_ix=None, strip_width=50,
         odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] + (strip_width/2.)
         odor_borders = [(odor_xmin, odor_xmax)]
 
-    return odor_borders
+    if get_entry_side:
+        return odor_borders, entry_left_edge
+    else:
+        return odor_borders
  
 
 # ---------------------------------------------------------------------- 
