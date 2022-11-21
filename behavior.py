@@ -37,6 +37,7 @@ import google_drive as gdrive
 # Data loading
 # ----------------------------------------------------------------------
 def get_log_files(src_dir=None, experiment=None, verbose=False, is_gdrive=False,
+        return_loginfo=False,
         rootdir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
     '''
     Get a list of full paths of all .log files of interest. 
@@ -57,14 +58,26 @@ def get_log_files(src_dir=None, experiment=None, verbose=False, is_gdrive=False,
         # connect to google drive and get info from sheet
         assert os.path.split(rootdir)[-1]=='Analysis', 'For G-drive, rootdir should be /Edge_Tracking/Aanalysis. Current rootdir is: {}{{}'.format('\n', rootdir)
         logdf = gdrive.get_info_from_gsheet(experiment)
-        if 'degree' in experiment: # specific to 'degree' experiments
-            exp_key = experiment.split('-degree')[0]
+#        if 'degree' in experiment: # specific to 'degree' experiments
+#            exp_key = experiment.split('-degree')[0]
+#        else:
+#            exp_key = experiment
+#        #curr_logs = logdf[logdf['experiment']==exp_key].copy()
+        if os.path.exists(os.path.join(rootdir, experiment, 'logs')):
+            logdir = os.path.join(rootdir, experiment, 'logs')
         else:
-            exp_key = experiment
-        curr_logs = logdf[logdf['experiment']==exp_key].copy()
-        log_files = [os.path.join(rootdir, experiment, 'logs', '{}'.format(f)) \
-                        for f in curr_logs['log'].values]
-        print("{} of {} files found.".format(len(curr_logs['log'].unique()), len(log_files)))
+            logdir = os.path.join(rootdir, experiment)
+        log_files = [os.path.join(logdir, '{}'.format(f)) for f in logdf['log'].values \
+                        if os.path.exists(os.path.join(logdir, '{}'.format(f)))]
+        # check rootdir 
+        if len(log_files)==0 and os.path.split(rootdir)[-1]=='Analysis':
+            print("Checking Data dir instead of Analysis")
+            rootdir_tmp = rootdir.replace('Analysis', 'Data')
+            logdir = os.path.join(rootdir_tmp, experiment)
+            log_files = [os.path.join(logdir, '{}'.format(f)) for f in logdf['log'].values \
+                        if os.path.exists(os.path.join(logdir, '{}'.format(f)))] 
+        print("{} of {} files found in: {}".format(len(log_files),
+                                                    len(logdf['log'].unique()), logdir))
         if len(log_files)==0:
             print("Check experiment name, only the following have sheet IDs: ")
             gsheet_dict = gdrive.get_sheet_keys()
@@ -86,7 +99,11 @@ def get_log_files(src_dir=None, experiment=None, verbose=False, is_gdrive=False,
         for fi, fn in enumerate(log_files):
             print(fi, os.path.split(fn)[-1])
 
-    return log_files
+    log_files = sorted(log_files, key=util.natsort)
+    if return_loginfo:
+        return log_files, logdf
+    else:
+        return log_files
 
 def parse_info_from_filename(fpath, experiment=None, 
             rootdir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
@@ -104,26 +121,31 @@ def parse_info_from_filename(fpath, experiment=None,
         experiment, datestr, fly_id, condition
     '''
 
-    info_str = fpath.split('{}/'.format(rootdir))[-1]
+    #info_str = fpath.split('{}/'.format(rootdir))[-1]
+    info_str = fpath.split('{}/'.format('/Edge_Tracking'))[-1]
     exp_cond_str, log_fname = os.path.split(info_str)
     fly_id=None
     cond=None
 
-    if "Fly" in info_str or 'fly' in info_str:
-        # assumes: nameofexperiment/maybestuff/FlyID
-        experiment = exp_cond_str.split('/{}'.format('Fly'))[0] \
-                    if "Fly" in exp_cond_str else exp_cond_str.split('/{}'.format('fly'))[0]
-    else:
-        experiment = exp_cond_str # fly ID likely in LOG filename
-    # get fly_id
-    fly_id = re.search('fly\d{1,3}[a-zA-Z]?', info_str, re.IGNORECASE)[0] # exp_cond_str
     # remove datestr
     date_str = re.search('[0-9]{8}-[0-9]{6}', log_fname)[0]
     cond_str = os.path.splitext(log_fname)[0].split('{}_'.format(date_str))[-1]
-    condition = '_'.join([c for c in cond_str.split('_') if fly_id not in c and not re.search('\d{3}', c)])
+    if 'fly' in info_str.lower():
+        # assumes: nameofexperiment/maybestuff/FlyID
+        if experiment is None:
+            experiment = exp_cond_str.lower().split('/{}'.format('fly'))[0] #\
+                    #if "Fly" in exp_cond_str else exp_cond_str.split('/{}'.format('fly'))[0]
+        # get fly_id
+        fly_id = re.search('fly\d{1,3}[a-zA-Z]?', info_str, re.IGNORECASE)[0].lower() # exp_cond_str
+    else:
+        if experiment is None:
+            experiment = exp_cond_str # fly ID likely in LOG filename
 
-    if fly_id is not None:
-        fly_id = fly_id.lower()
+    if fly_id is None:
+        fly_id = 'fly{}'.format(date_str.split('-')[-1]) # use timestamp for unique fly id for current date
+
+    condition = '_'.join([c for c in cond_str.split('_') if fly_id not in c \
+                    and not re.search('\d{3}', c)])
     if condition is not None:
         condition = condition.lower()
 
@@ -147,7 +169,7 @@ def load_dataframe_test(fpath, verbose=False,
     return df0
 
 
-def load_dataframe(fpath, verbose=False, cond=None,
+def load_dataframe(fpath, verbose=False, experiment=None, 
                     parse_filename=True, savedir=None, remove_invalid=True, plot_errors=False):
     '''
     Read raw .log file from behavior and return formatted dataframe.
@@ -225,15 +247,15 @@ def load_dataframe(fpath, verbose=False, cond=None,
     if figpath is None and plot_errors is True:
         print("[warning]: Provide savedir to save errors fig")
     df0, ft_flag = check_ft_skips(df0, plot=plot_errors, remove_invalid=remove_invalid,
-                    figpath=figpath)
+                    figpath=figpath, verbose=verbose)
     if ft_flag:
-        print("--> found bad skips in FTs, check: {}".format(fpath))
+        print("--> found bad skips in FTs, check: {}".format(fname))
 
     # get experiment info
     if parse_filename:
         #print("... parsing info from filename")
-        exp, datestr, fly_id, cond = parse_info_from_filename(fpath)
-        df0['experiment'] = exp
+        exp, datestr, fly_id, cond = parse_info_from_filename(fpath, experiment)
+        df0['experiment'] = experiment
         df0['fly_name'] = fly_id
         df0['condition'] = cond
         df0['trial'] = datestr
@@ -250,7 +272,7 @@ def load_dataframe(fpath, verbose=False, cond=None,
 
     return df0
 
-def check_ft_skips(df, plot=False, remove_invalid=True, figpath=None):
+def check_ft_skips(df, plot=False, remove_invalid=True, figpath=None, verbose=False):
     '''
     Check dataframe of current logfile and find large skips.
 
@@ -265,6 +287,7 @@ def check_ft_skips(df, plot=False, remove_invalid=True, figpath=None):
        df (pd.DataFrame) : either just itself or valid only
        valid_flag (bool) : True if bad skips detected
     '''
+    fname = df['filename'].unique()
     bad_skips={}
     max_step_size={'ft_posx': 10, 'ft_posy': 10, 'ft_frame': 100}
     for pvar, stepsize in max_step_size.items():
@@ -280,7 +303,8 @@ def check_ft_skips(df, plot=False, remove_invalid=True, figpath=None):
             first_step = df[pvar].diff().abs().max()
             #time_step = df.iloc[wonky_skips[0]]['time'] - df.iloc[wonky_skips[0]-1]['time']
             bad_skips.update({pvar: wonky_skips})
-            print("WARNING: found wonky ft skip ({} jumped {:.2f}).".format(pvar, first_step))
+            if verbose:
+                print("WARNING: found wonky ft skip ({} jumped {:.2f}).".format(pvar, first_step))
     if plot==True and len(bad_skips.keys())>0:
         fig, ax = pl.subplots(figsize=(3,3)) 
         fname = df['filename'].unique()[0]
@@ -307,7 +331,7 @@ def check_ft_skips(df, plot=False, remove_invalid=True, figpath=None):
         if remove_invalid:
             valid_df = df.iloc[0:wonky_skips[0]].copy()
             sz_removed = df.shape[0] - valid_df.shape[0]
-            print("Removing {} of {} samples.".format(sz_removed, df.shape[0]))
+            print("[WARNING] {}: Found bad skips, removing {} of {} samples.".format(fname, sz_removed, df.shape[0]))
         else:
             valid_df = df.copy()
 
@@ -345,34 +369,43 @@ def load_df(fpath):
         df = pkl.load(f)
     return df
 
-def correct_manual_conditions(df, experiment):
+def correct_manual_conditions(df, experiment, logdf=None):
     '''
     Tries to correct manually-renamed files so that "condition" is accurate.
 
     Arguments:
         df -- _description_
         experiment -- _description_
-
+        logdf (pd.DataFrame) : loaded from google sheets, has correct experiment names
     Returns:
         _description_
     '''
     print("Correcting experiment conditions: {}".format(experiment))
-    if experiment=='vertical_strip/paired_experiments':
-        # update condition names
-        df.loc[df['condition']=='light', 'condition'] = 'lightonly'
+    if logdf is not None:
+        for logfn, df_ in df.groupby('filename'):
+            # specific to old data log format from google sheets...
+            experiment = logdf[logdf['log']=='{}.log'.format(logfn)]['experiment'].values[0]
+            genotype = logdf[logdf['log']=='{}.log'.format(logfn)]['genotype'].values[0]
+            df.loc[df['filename']==logfn, 'condition'] = experiment
+            df.loc[df['filename']==logfn, 'genotype'] = genotype
+    else:
+        if experiment=='vertical_strip/paired_experiments':
+            # update condition names
+            df.loc[df['condition']=='light', 'condition'] = 'lightonly'
 
-    elif experiment=='reverse gradient':
-        df.loc[df['condition']=='cantons_constantodor', 'condition'] = 'constantodor'
-        df.loc[df['condition']=='cantons_reversegradient', 'condition'] = 'reversegradient'
-        df.loc[df['condition']=='cantons_contantodor', 'condition'] = 'constantodor'
-    
-    elif 'degree' in experiment:
-        df['condition'] = experiment 
-        #df.loc[df['condition']!='cantons_constantodor', 'condition'] = 'cantons_constantodor'  
+        elif experiment=='reverse gradient':
+            df.loc[df['condition']=='cantons_constantodor', 'condition'] = 'constantodor'
+            df.loc[df['condition']=='cantons_reversegradient', 'condition'] = 'reversegradient'
+            df.loc[df['condition']=='cantons_contantodor', 'condition'] = 'constantodor'
+        
+        elif 'degree' in experiment:
+            df['condition'] = experiment 
+            #df.loc[df['condition']!='cantons_constantodor', 'condition'] = 'cantons_constantodor'  
+        df['genotype'] = ''
     return df
 
-def load_combined_df(src_dir=None, log_files=None, savedir=None, create_new=False, 
-                verbose=False, save_errors=True, remove_invalid=True, 
+def load_combined_df(src_dir=None, log_files=None, logdf=None, experiment=None, savedir=None, 
+                create_new=False, verbose=False, save_errors=True, remove_invalid=True, 
                 process=True, save=True, parse_filename=True, 
                 rootdir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
     '''
@@ -432,20 +465,22 @@ def load_combined_df(src_dir=None, log_files=None, savedir=None, create_new=Fals
         # cycle thru log files and combine into 1 mega df
         dlist = []
         for fi, fn in enumerate(log_files):
+            fname = os.path.split(fn)[-1]
             if verbose is True:
                 try:
                     exp, datestr, fly_id, cond = parse_info_from_filename(fn) 
                     print(fi, datestr, fly_id, cond)
                 except Exception as e:
                     print(fname)
-                    pass
-            df_ = load_dataframe(fn, verbose=False, cond=None, parse_filename=parse_filename,
+                    parse_filename=False 
+            df_ = load_dataframe(fn, verbose=False, experiment=experiment, 
+                                parse_filename=parse_filename,
                                 savedir=savedir, remove_invalid=remove_invalid, plot_errors=save_errors)
             dlist.append(df_)
         df = pd.concat(dlist, axis=0)
         # get experiment name
         experiment = src_dir.split('{}/'.format(rootdir))[-1]
-        df = correct_manual_conditions(df, experiment) 
+        df = correct_manual_conditions(df, experiment, logdf=logdf)
         # do some processing, like distance and speed calculations
         if process:
             if verbose:
@@ -690,7 +725,7 @@ def process_df(df, xvar='ft_posx', yvar='ft_posy',
                 bout_thresh=0.5, 
                 smooth=False, window_size=11, verbose=False):
     dlist=[]
-    for trial_id, df_ in df.groupby(['trial_id']):
+    for trial_id, df_ in df.groupby('trial_id'):
         if verbose:
             print("... processing {}".format(trial_id))
         # parse in and out bouts
