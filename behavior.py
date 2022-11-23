@@ -114,7 +114,7 @@ def parse_info_from_filename(fpath, experiment=None,
         fpath -- _description_
 
     Keyword Arguments:
-        experiment -- _description_ (default: {None})
+        experiment -- subdir within rootdir (default: {None})
         rootdir -- _description_ (default: {'/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'})
 
     Returns:
@@ -154,8 +154,7 @@ def parse_info_from_filename(fpath, experiment=None,
 
     return experiment, date_str, fly_id, condition
 
-def load_dataframe_test(fpath, verbose=False, 
-                    parse_filename=True):
+def load_dataframe_test(fpath, verbose=False, parse_filename=True):
     '''
     Read raw .log file from behavior and return formatted dataframe.
     Assumes MFC for odor is either 'mfc2_stpt' or 'mfc3_stpt'.
@@ -180,7 +179,16 @@ def load_dataframe(fpath, verbose=False, experiment=None,
     Assumes LED for on is 'led1_stpt'.
 
     Arguments:
-        fpath -- (str) Full path to .log file
+        fpath (str) Full path to .log file
+    Keyword Arguments:
+        parse_filename (bool, True) : Set to False to avoid issues from non-standard file naming
+        savedir (str, None) : Full path to save dir for error figures (e.g., FT skips)
+        remove_invalid (bool, True) : Remove all frames after a bad skip
+        plot_errors (bool, False) : Plot jumps in FT variables detected with bad skips
+
+    Returns:
+        df0 (pd.DataFrame) 
+
     '''
     # read .log as dataframe 
     df0 = pd.read_csv(fpath, encoding='latin' )#, sep=",", skiprows=[1], header=0, 
@@ -1394,6 +1402,18 @@ def dsquared_line_points(P1, P2, points):
     return np.divide(nom, denom)
 
 def rdp_numpy(M, epsilon = 0):
+    '''
+    Created masked array matched to size of M for RDP points.
+
+    Arguments:
+        M -- _description_
+
+    Keyword Arguments:
+        epsilon -- _description_ (default: {0})
+
+    Returns:
+        _description_
+    '''
 
     # initiate mask array
     # same amount of points
@@ -1437,12 +1457,43 @@ def rdp_numpy(M, epsilon = 0):
     return mask
 
 def rdp_mask(df, epsilon=0.1, xvar='ft_posx', yvar='ft_posy'):
+    '''
+    Create RDP mask for set of coords
+
+    Arguments:
+        df -- _description_
+
+    Keyword Arguments:
+        epsilon -- _description_ (default: {0.1})
+        xvar -- _description_ (default: {'ft_posx'})
+        yvar -- _description_ (default: {'ft_posy'})
+
+    Returns:
+        simp:  np.array, RDP-simplified points, [x y]
+    '''
     M = df[[xvar, yvar]].values
     simp = rdp_numpy(M, epsilon = epsilon)
 
     return simp
 
-def add_rdp_by_bout(df_, epsilon=0.1, xvar='ft_posx', yvar='ft_posy'):
+def add_rdp_by_bout(df_, epsilon=0.5, xvar='ft_posx', yvar='ft_posy'):
+    '''
+    Calculate RDP-simplified trajectories for each bout.
+    Save values to existing df as masked arrays to match original index.
+    Use to index into original values.
+
+    Arguments:
+        df_ (pd.DataFrame) : original dataframe, all bouts
+
+    Keyword Arguments:
+        epsilon -- _description_ (default: {0.5})
+        xvar -- _description_ (default: {'ft_posx'})
+        yvar -- _description_ (default: {'ft_posy'})
+
+    Returns:
+        df_
+    '''
+
     df_['rdp_{}'.format(xvar)] = None
     df_['rdp_{}'.format(yvar)] = None
     for b, b_ in df_.groupby(['condition', 'boutnum']):
@@ -1452,6 +1503,18 @@ def add_rdp_by_bout(df_, epsilon=0.1, xvar='ft_posx', yvar='ft_posy'):
     return df_
 
 def get_rdp_distances(df_, rdp_var='rdp_ft_posx'):
+    '''
+    Get N RDP points and distances for each bout.
+
+    Arguments:
+        df_ -- _description_
+
+    Keyword Arguments:
+        rdp_var -- _description_ (default: {'rdp_ft_posx'})
+
+    Returns:
+        rdp_dists (pd.DataFrame) : for each bout, euclid, upwind, and xwind distances, plus N rdpp points.
+    '''
     dists_=[]
     for bi, (bnum, b_) in enumerate(df_.groupby('boutnum')):
         rdp_points = b_[b_[rdp_var]].shape[0]
@@ -1472,7 +1535,19 @@ def get_rdp_distances(df_, rdp_var='rdp_ft_posx'):
 
 def plot_overlay_rdp_v_smoothed(b_, ax, xvar='ft_posx', yvar='ft_posy', epsilon=1,
             normalize_y=False):
+    '''
+    Compare original trace, smoothed trace, and RDP-simplified for 1 bout.
 
+    Arguments:
+        b_ -- _description_
+        ax -- _description_
+
+    Keyword Arguments:
+        xvar -- _description_ (default: {'ft_posx'})
+        yvar -- _description_ (default: {'ft_posy'})
+        epsilon -- _description_ (default: {1})
+        normalize_y -- _description_ (default: {False})
+    '''
     if 'rdp_{}'.format(xvar) not in b_.columns:
         add_rdp_by_bout(b_, epsilon=epsilon, xvar=xvar, yvar=yvar)
 
@@ -1499,6 +1574,27 @@ def plot_overlay_rdp_v_smoothed(b_, ax, xvar='ft_posx', yvar='ft_posy', epsilon=
 def plot_overlay_rdp_v_smoothed_multi(df_, boutlist=None, nr=4, nc=6, distvar=None,
                                 sharex=False, sharey=False,
                                 rdp_epsilon=1.0, smooth_window=11, xvar='ft_posx', yvar='ft_posy'):
+    '''
+    Plot several bouts to compare raw, smoothed, and RDP-simplified. 
+
+    Arguments:
+        df_ -- _description_
+
+    Keyword Arguments:
+        boutlist -- _description_ (default: {None})
+        nr -- _description_ (default: {4})
+        nc -- _description_ (default: {6})
+        distvar -- _description_ (default: {None})
+        sharex -- _description_ (default: {False})
+        sharey -- _description_ (default: {False})
+        rdp_epsilon -- _description_ (default: {1.0})
+        smooth_window -- _description_ (default: {11})
+        xvar -- _description_ (default: {'ft_posx'})
+        yvar -- _description_ (default: {'ft_posy'})
+
+    Returns:
+        fig 
+    '''
     if boutlist is None:
         #boutlist = list(np.arange(1, nr*nc))
         nbouts_plot = nr*nc
@@ -1579,7 +1675,7 @@ def rdp_to_heading(b_, xvar='ft_posx', yvar='ft_posy', theta_range=(-np.pi, np.p
         theta_range -- _description_ (default: {(0, 2*np.pi)})
 
     Returns:
-        _description_
+        b_ (bout dataframe): 'rdp_arctan2' column added
     '''
     rdp_var ='rdp_{}'.format(xvar)
     #rdp_y ='rdp_{}'.format(yvar)
@@ -1603,6 +1699,22 @@ def rdp_to_heading(b_, xvar='ft_posx', yvar='ft_posy', theta_range=(-np.pi, np.p
 
 def mean_heading_across_rdp(b_, xvar='ft_posx', yvar='ft_posy', 
                     heading_var='ft_heading', theta_range=(-np.pi, np.pi)):
+    '''
+    Calculate the mean heading across raw heading values b/w 1 RDP point to the next.
+    Repeats 1st value.
+
+    Arguments:
+        b_ -- _description_
+
+    Keyword Arguments:
+        xvar -- _description_ (default: {'ft_posx'})
+        yvar -- _description_ (default: {'ft_posy'})
+        heading_var -- _description_ (default: {'ft_heading'})
+        theta_range -- _description_ (default: {(-np.pi, np.pi)})
+    
+    Returns:
+        b_ (bout dataframe) w/ 'mean_angle' column added.
+    '''
     rdp_var='rdp_{}'.format(xvar) 
     ixs = b_[b_[rdp_var]].index.tolist()
     mean_angles=[] 
@@ -1626,6 +1738,29 @@ def mean_heading_across_rdp(b_, xvar='ft_posx', yvar='ft_posy',
 def examine_heading_in_bout(b_, theta_range=(-np.pi, np.pi), xvar='ft_posx', yvar='ft_posy',
                         heading_var_og='ft_heading', heading_var='ft_heading', theta_cmap='hsv', 
                         leg_size=0.1, show_angles=False):
+    '''
+    Sanity check to plot: 
+        a) traj colored by time, 
+        b) FT-measured heading values, 
+        c) heading calculated between RDP points (rdp_arctan2), and 
+        d) mean of heading vals between RDP points.
+
+    Arguments:
+        b_ -- _description_
+
+    Keyword Arguments:
+        theta_range -- _description_ (default: {(-np.pi, np.pi)})
+        xvar -- _description_ (default: {'ft_posx'})
+        yvar -- _description_ (default: {'ft_posy'})
+        heading_var_og -- _description_ (default: {'ft_heading'})
+        heading_var -- _description_ (default: {'ft_heading'})
+        theta_cmap -- _description_ (default: {'hsv'})
+        leg_size -- _description_ (default: {0.1})
+        show_angles -- Include legends for angles in all plots for sanity checks (default: {False})
+
+    Returns:
+        fig  
+    '''
     fig, axn = pl.subplots(2, 2, figsize=(8, 6), sharex=True, sharey=True)
     ax=axn[0, 0]
     sns.scatterplot(data=b_, x="ft_posx", y="ft_posy", ax=ax,
@@ -1674,7 +1809,29 @@ def examine_heading_in_bout(b_, theta_range=(-np.pi, np.pi), xvar='ft_posx', yva
 def plot_bout(b_, ax, xvar='ft_posx', yvar='ft_posy', hue_var='time', 
                 norm=None, cmap='viridis', hue_title=None, alpha=0.7, 
                 plot_legend=True, plot_cbar=False, ncols=1, markersize=10):
+    '''
+    Plot a bout colored by a continuous cmap (with colorbar)
 
+    Arguments:
+        b_ -- _description_
+        ax -- _description_
+
+    Keyword Arguments:
+        xvar -- _description_ (default: {'ft_posx'})
+        yvar -- _description_ (default: {'ft_posy'})
+        hue_var -- _description_ (default: {'time'})
+        norm -- _description_ (default: {None})
+        cmap -- _description_ (default: {'viridis'})
+        hue_title -- _description_ (default: {None})
+        alpha -- _description_ (default: {0.7})
+        plot_legend -- _description_ (default: {True})
+        plot_cbar -- _description_ (default: {False})
+        ncols -- _description_ (default: {1})
+        markersize -- _description_ (default: {10})
+
+    Returns:
+        ax
+    '''
     if hue_title is None:
         hue_title = hue_var
     fig = ax.figure
@@ -1708,6 +1865,23 @@ def plot_bout(b_, ax, xvar='ft_posx', yvar='ft_posy', hue_var='time',
 
 def add_colored_lines(b_, ax, xvar='ft_posx', yvar='ft_posy', 
                     hue_var='heading', cmap='hsv', norm=None):
+    '''
+    Plot lines between x, y points in bout, b_, with specified colors.
+
+    Arguments:
+        b_ -- _description_
+        ax -- _description_
+
+    Keyword Arguments:
+        xvar -- _description_ (default: {'ft_posx'})
+        yvar -- _description_ (default: {'ft_posy'})
+        hue_var -- _description_ (default: {'heading'})
+        cmap -- _description_ (default: {'hsv'})
+        norm -- _description_ (default: {None})
+
+    Returns:
+        ax
+    '''
     #if norm is None:
     #    mpl.colors.Normalize(theta_range[0], theta_range[1])
     assert norm is not None, "Must provide norm"
@@ -1723,6 +1897,26 @@ def add_colored_lines(b_, ax, xvar='ft_posx', yvar='ft_posy',
 
 def examine_heading_at_stops(b_, xvar='ft_posx', yvar='ft_posy',
                     theta_range=(-np.pi, np.pi), theta_cmap='hsv', show_angles=False):
+    '''
+    Creates comparison figure for sanity checks, plots:
+        a) trajectory colored by time
+        b) traj colored by speed
+        c) traj showing stopbouts (red)
+        d) calculated RDP heading (rdp-arctan2)
+
+    Arguments:
+        b_ -- _description_
+
+    Keyword Arguments:
+        xvar -- _description_ (default: {'ft_posx'})
+        yvar -- _description_ (default: {'ft_posy'})
+        theta_range -- _description_ (default: {(-np.pi, np.pi)})
+        theta_cmap -- _description_ (default: {'hsv'})
+        show_angles -- _description_ (default: {False})
+
+    Returns:
+        fig
+    '''
     fig, axn = pl.subplots(1, 4, figsize=(10, 4), sharex=True, sharey=True)
     ax=axn[0]
     cmap = pl.get_cmap("viridis")
@@ -1777,6 +1971,17 @@ def examine_heading_at_stops(b_, xvar='ft_posx', yvar='ft_posy',
 
 def examine_heading_at_stops_vectors(b_, xvar='ft_posx', yvar='ft_posy',
                     theta_range=(-np.pi, np.pi), theta_cmap='hsv', show_angles=False, scale=1.5):
+
+    '''
+    Creates comparison figure for sanity checks (similar to examine_heading_at_stops), but 
+    combines 1st 2 panels (time, speed) by using color-coded vector plot. Plots:
+        a) trajectory colored by speed, vectors show direction.
+        b) traj showing stopbouts (red)
+        c) calculated RDP heading (rdp-arctan2)
+
+    Returns:
+        fig
+    '''
     fig, axn = pl.subplots(1, 3, figsize=(8, 4), sharex=True, sharey=True)
     # ---------------------
     ax=axn[0]
@@ -1822,11 +2027,97 @@ def examine_heading_at_stops_vectors(b_, xvar='ft_posx', yvar='ft_posy',
     return fig
 
 
+def visualize_calculation_heading_after_stop(b_, theta_range=(-np.pi, np.pi),
+            theta_cmap='hsv', xvar='ft_posx', yvar='ft_posy'):
+    '''
+    Visualize calculations of heading after stops in 1 bout. Plots:
+        a) scatter of trajectory of current bout (stops=red)
+        b) RDP-simplified trajectory w/ connected lines, colored by heading. Stop bouts are circles.
+        c) Full trajectory in bout, colored by heading, showing the values over which "heading after stop" are calculated. 
 
+    Arguments:
+        b_ -- _description_
 
+    Keyword Arguments:
+        theta_range -- _description_ (default: {(-np.pi, np.pi)})
+        theta_cmap -- _description_ (default: {'hsv'})
+        xvar -- _description_ (default: {'ft_posx'})
+        yvar -- _description_ (default: {'ft_posy'})
+
+    Returns:
+        fig
+    '''
+    theta_norm = mpl.colors.Normalize(theta_range[0], theta_range[1])
+
+    stopbouts = b_[b_['stopped']]['stopboutnum'].unique()
+
+    fig, axn =pl.subplots(1, 3, figsize=(8, 4), sharex=True, sharey=True)
+    ax=axn[0]
+    stop_palette={True: 'r', False: 'w'}
+    n_stops_in_bout = len(b_[b_['stopped']]['stopboutnum'].unique())
+    hue_title =  'stopped (n={})'.format(n_stops_in_bout)
+    ax = plot_bout(b_.iloc[0::5], ax, hue_var='stopped', xvar='ft_posx', yvar='ft_posy',
+                cmap=stop_palette, hue_title=hue_title, ncols=1, alpha=0.5, plot_legend=True)
+    ax.set_title('stop bouts', fontsize=7)
+
+    ax=axn[1]
+    ax.set_title('RDP simplified heading', fontsize=7)
+    rdp_var ='rdp_{}'.format(xvar)
+    ax.plot(b_[xvar], b_[yvar], 'w', lw=0.5)
+    #b_['rdp_arctan2_deg'] = np.rad2deg(b_['rdp_arctan2'])
+    ax = plot_bout(b_[b_[rdp_var]], ax, xvar=xvar, yvar=yvar, 
+                hue_var='rdp_arctan2', norm=theta_norm, cmap=theta_cmap,
+                markersize=20, plot_legend=False)
+    ax = add_colored_lines(b_[b_[rdp_var]], ax, hue_var='rdp_arctan2', 
+                                cmap=theta_cmap, norm=theta_norm)
+    for snum, s_ in b_[b_['stopboutnum'].isin(stopbouts)].groupby('stopboutnum'):
+        # plot a big circle over each stop bout (takes CoM of all points included in stop bout)
+        cx, cy = util.get_CoM(s_, xvar=xvar, yvar=yvar)
+        ax.scatter(cx, cy, marker='o', edgecolor='w', s=100, facecolor='none')
+    # 
+    ax = axn[2]
+    ax = plot_bout(b_, ax, hue_var='ft_heading', xvar=xvar, yvar=yvar,
+                cmap=theta_cmap, ncols=1, alpha=0.5, plot_legend=False)
+    for snum, s_ in b_[b_['stopboutnum'].isin(stopbouts)].groupby('stopboutnum'):
+        cx, cy = util.get_CoM(s_, xvar=xvar, yvar=yvar)
+        ax.scatter(cx, cy, marker='o', edgecolor='w', s=100, facecolor='none')
+        start_ = s_.iloc[0][['ft_posx', 'ft_posy']].values
+        start_ix = s_.iloc[0].name
+        # take average up to *next* RDP point after current stop bout. 
+        end_ = b_[b_[rdp_var]].loc[start_ix:].iloc[1][['ft_posx', 'ft_posy']]
+        coords_ = np.array([start_, end_])
+        ax.plot(coords_[:, 0], coords_[:, 1], 'k', alpha=0.7)
+    ax.set_title('Get average heading to next RDP point', fontsize=7)
+    # for snum in stopbouts:
+    #     cx, cy = util.get_CoM(b_[b_['stopboutnum']==snum], xvar=xvar, yvar=yvar)
+    #     ax.scatter(cx, cy, marker='o', edgecolor='w', s=100, facecolor='none')
+    cax = util.add_colorwheel(fig, theta_range=theta_range, cmap=theta_cmap, 
+                            axes=[0.86, 0.6, 0.1, 0.1])
+    pl.subplots_adjust(wspace=0.5, left=0.15, top=0.8, right=0.85)
+
+    return fig
+
+# --------------------------------------------------------------------
 # data processing
+# --------------------------------------------------------------------
 def get_speed_and_stops(b_, speed_thresh=1.0, stopdur_thresh=0.5,
                         xvar='ft_posx', yvar='ft_posy'):
+    '''
+    Calculate speed at each point. Find stop points, defined by speed_thresh. 
+    Filter found stop bouts by stopdur_thresh.
+
+    Arguments:
+        b_ (pd.DataFrame): dataframe corresponding to 1 bout (though doesn't matter, could be whole DF)
+
+    Keyword Arguments:
+        speed_thresh -- _description_ (default: {1.0})
+        stopdur_thresh -- _description_ (default: {0.5})
+        xvar -- _description_ (default: {'ft_posx'})
+        yvar -- _description_ (default: {'ft_posy'})
+
+    Returns:
+        _description_
+    '''
     b_ = calculate_speed(b_, xvar=xvar, yvar=yvar)
     b_ = calculate_stops(b_, stop_thresh=speed_thresh, speed_varname='speed')
     b_ = parse_bouts(b_, count_varname='stopped', bout_varname='stopboutnum')
@@ -1851,11 +2142,13 @@ def mean_dir_after_stop(df, heading_var='ft_heading',theta_range=(-np.pi, np.pi)
         for snum, s_ in b_[b_['stopboutnum'].isin(stopbouts)].groupby('stopboutnum'):
             start_ix = s_.iloc[0].name
             #end_ix = b_[b_[rdp_var]].loc[start_ix:].iloc[1].name
+
+            # average values up to the next i+1 RDP point from the current (stop) index:
             rest_of_chunk = b_[b_[rdp_var]].loc[start_ix:]
-            if rest_of_chunk.shape[0] <= 1:
+            if rest_of_chunk.shape[0] <= 1: # if this is the last chunk, just go to next point
                 end_ix = rest_of_chunk.iloc[0].name
             else:
-                end_ix = rest_of_chunk.iloc[1].name # pref to get next rdp
+                end_ix = rest_of_chunk.iloc[1].name # pref to get next rdp rather than nearest (?)
             s_chunk = b_.loc[start_ix:end_ix]
             d_ = pd.DataFrame({
                 'fly_id': b_['fly_id'].unique()[0],
@@ -1875,7 +2168,8 @@ def mean_dir_after_stop(df, heading_var='ft_heading',theta_range=(-np.pi, np.pi)
     return meandirs
 
 
-def get_bout_metrics(df_, group_vars=['fly_id', 'condition', 'boutnum']):
+def get_bout_metrics(df_, group_vars=['fly_id', 'condition', 'boutnum'],
+                        theta_range=(-np.pi, np.pi)):
     single_vals = [i for i in df_.columns if len(df_[i].unique())==1\
                   and i not in group_vars]
     single_metrics = df_[single_vals].drop_duplicates().reset_index(drop=True).squeeze()
@@ -1890,17 +2184,13 @@ def get_bout_metrics(df_, group_vars=['fly_id', 'condition', 'boutnum']):
         'crosswind_dist_range': df_['ft_posx'].max() - df_['ft_posx'].min(),
         'crosswind_dist_firstlast': df_['ft_posx'].iloc[-1] - df_['ft_posx'].iloc[0],
         'path_length': df_['euclid_dist'].sum() -  df_['euclid_dist'].iloc[0],
-        'average_heading': sts.circmean(df_['ft_heading'], low=-np.pi, high=np.pi),
+        'average_heading': sts.circmean(df_['ft_heading'], low=theta_range[0], high=theta_range[1]),
         'rel_time': df_['rel_time'].iloc[0]
     }) #, index=[0])
     
     #metrics = pd.DataFrame(pd.concat([misc, lin_metrics, single_metrics])).T    
     metrics = pd.concat([misc, lin_metrics, single_metrics]) 
     return metrics
-
-
-
-
 
 def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, strip_sep=200, 
                     xvar='ft_posx', yvar='ft_posy',
