@@ -844,6 +844,24 @@ def calculate_turn_angle(df, xvar='ft_posx', yvar='ft_posy'):
     
     return df
 
+
+def calculate_angular_velocity(df, time_var='time', 
+                    pitch_var='ft_pitch', roll_var='ft_roll', yaw_var='ft_yaw'):
+    delta_t = np.gradient(df[time_var].values) #df['time'].diff().mean()
+    pitch = df[pitch_var].values
+    pitch_rate = df[pitch_var].values/delta_t
+    roll = df[roll_var].values
+    roll_rate = df[roll_var].values/delta_t
+    yaw = df[yaw_var].values
+    yaw_rate = df[yaw_var].values/delta_t
+    
+    wx = roll_rate - yaw_rate*np.sin(pitch)
+    wy = pitch_rate * np.cos(roll) + yaw_rate * np.sin(roll) * np.cos(pitch)
+    wz = yaw_rate * np.cos(roll) * np.cos(pitch) - pitch_rate * np.sin(roll)
+    angvel = np.sqrt(wx**2 + wy**2 + wz**2)
+    
+    return angvel
+
 def calculate_speed(df0, xvar='ft_posx', yvar='ft_posy'):
     '''
     Calculate speed as gradient/time. Blind to bouts.
@@ -1697,11 +1715,11 @@ def rdp_to_heading(b_, xvar='ft_posx', yvar='ft_posy', theta_range=(-np.pi, np.p
     #b_['rdp_arctan2'] = b_['rdp_arctan2'].astype(float)
     return b_
 
-def mean_heading_across_rdp(b_, xvar='ft_posx', yvar='ft_posy', 
-                    heading_var='ft_heading', theta_range=(-np.pi, np.pi)):
+def calculate_mean_across_rdp(b_, xvar='ft_posx', yvar='ft_posy', 
+                    heading_var='ft_heading', is_phase=True, theta_range=(-np.pi, np.pi)):
     '''
     Calculate the mean heading across raw heading values b/w 1 RDP point to the next.
-    Repeats 1st value.
+    Each dot is mean leading up to itself (repeats 1st value).
 
     Arguments:
         b_ -- _description_
@@ -1713,25 +1731,23 @@ def mean_heading_across_rdp(b_, xvar='ft_posx', yvar='ft_posy',
         theta_range -- _description_ (default: {(-np.pi, np.pi)})
     
     Returns:
-        b_ (bout dataframe) w/ 'mean_angle' column added.
+        b_ (bout dataframe) w/ 'HEADINGVAR_mean' column added.
     '''
     rdp_var='rdp_{}'.format(xvar) 
     ixs = b_[b_[rdp_var]].index.tolist()
     mean_angles=[] 
     for i, ix in enumerate(ixs[0:-1]):
-        ang = sts.circmean(b_.loc[ix:ixs[i+1]][heading_var], \
+        if is_phase:
+            ang = sts.circmean(b_.loc[ix:ixs[i+1]][heading_var], \
                         high=theta_range[1], low=theta_range[0]) #high=2*np.pi, low=0)
+        else:
+            ang = b_.loc[ix:ixs[i+1]][heading_var].mean()
         mean_angles.append(ang)
         if i==0:
             mean_angles.append(ang)
     mean_angles = np.array(mean_angles)
 
-#    if theta_range[0]==0: 
-#        assert np.floor(mean_angles.min())>=0, "Min ({:.2f}) is not > 0".format(mean_angles.min())
-#        assert np.ceil(mean_angles.max())>np.floor(np.pi), "Min ({:.2f}) is not 2pi".format(mean_angles.max())
-#    print('mean angles: ({:.2f}, {:.2f})'.format(min(mean_angles), max(mean_angles)))
-
-    b_.loc[b_[rdp_var], 'mean_angle'] = util.unwrap_and_constrain_angles(mean_angles)
+    b_.loc[b_[rdp_var], '{}_mean'.format(heading_var)] = util.unwrap_and_constrain_angles(mean_angles)
 
     return b_
 
@@ -1799,10 +1815,10 @@ def examine_heading_in_bout(b_, theta_range=(-np.pi, np.pi), xvar='ft_posx', yva
     # ---------------------------------------------------------
     ax=axn[1,1]; ax.set_title('mean angles')
     ax.plot(b_[xvar], b_[yvar], 'w', lw=0.5)
-    b_ = mean_heading_across_rdp(b_, heading_var=heading_var, theta_range=theta_range)
-    ax = plot_bout(b_[b_[rdp_var]], ax, hue_var='mean_angle', norm=norm, cmap=theta_cmap,
+    b_ = calculate_mean_across_rdp(b_, heading_var=heading_var, theta_range=theta_range, is_phase=True)
+    ax = plot_bout(b_[b_[rdp_var]], ax, hue_var='{}_mean'.format(heading_var), norm=norm, cmap=theta_cmap,
                 markersize=25, plot_legend=show_angles)
-    ax = add_colored_lines(b_[b_[rdp_var]], ax, hue_var='mean_angle', cmap=theta_cmap, norm=norm)
+    ax = add_colored_lines(b_[b_[rdp_var]], ax, hue_var='{}_mean'.format(heading_var), cmap=theta_cmap, norm=norm)
 
     return fig
 
@@ -2277,7 +2293,7 @@ def plot_trajectory_from_file(fpath, parse_filename=False, strip_width=10, strip
 
 def plot_trajectory(df0, odor_bounds=[], ax=None,
         xvar='ft_posx', yvar='ft_posy',
-        hue_varname='instrip', palette={True: 'r', False: 'w'}, 
+        hue_varname='instrip', palette={True: 'r', False: 'w'}, hue_norm=None,
         start_at_odor = True, odor_lc='lightgray', odor_lw=0.5, title='',
         markersize=0.5, alpha=1.0, 
         center=False, xlim=200, plot_odor_onset=True, plot_legend=True):
