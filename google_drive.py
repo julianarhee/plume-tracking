@@ -78,7 +78,8 @@ def get_sheet_keys():
           '45-degree': '15mE8k1Z9PN3_xhQH6mz1AEIyspjlfg5KPkd1aNLs9TM',
           'T-plume': '14r0TgRUhohZtw2GQgirUseBWXK8NPbyqPzPvAtND7Gs',
           'constant_vs_gradient': '1Is1t3UtMAycrvpSMvEf6j2Gpc4b5jkEdm7yTIEAxfw8',
-          'spontaneous_edge_tracking': '1v2z5npPBzF1et2OQoA2CQuQp8ScBT5HX3uv8KEaAXlk'
+          'spontaneous_edge_tracking': '1v2z5npPBzF1et2OQoA2CQuQp8ScBT5HX3uv8KEaAXlk',
+          'hdeltca': '1CnFEOQ06Nc8qiyaxab7mUQuWu_UHiFBRQj2C6ZhFfs4'
         }
     return gsheet_key   
 
@@ -96,6 +97,8 @@ def get_sheet_id(experiment):
         sheet_id = '1Is1t3UtMAycrvpSMvEf6j2Gpc4b5jkEdm7yTIEAxfw8'
     elif experiment.lower() == 'spontaneous_edge_tracking':
         sheet_id = '1v2z5npPBzF1et2OQoA2CQuQp8ScBT5HX3uv8KEaAXlk'
+    elif experiment == 'hdeltac':
+        sheet_id = '1CnFEOQ06Nc8qiyaxab7mUQuWu_UHiFBRQj2C6ZhFfs4'
     else:
         sheet_id = None
 
