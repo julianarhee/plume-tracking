@@ -136,7 +136,7 @@ def parse_info_from_filename(fpath, experiment=None,
             experiment = exp_cond_str.lower().split('/{}'.format('fly'))[0] #\
                     #if "Fly" in exp_cond_str else exp_cond_str.split('/{}'.format('fly'))[0]
         # get fly_id
-        fly_id = re.search('fly\d{1,3}[a-zA-Z]?', info_str, re.IGNORECASE)[0].lower() # exp_cond_str
+        fly_id = re.search('fly\d{1,3}[a-zA-Z]?', info_str, re.IGNORECASE)[0] # exp_cond_str
     else:
         if experiment is None:
             experiment = exp_cond_str # fly ID likely in LOG filename
@@ -148,6 +148,9 @@ def parse_info_from_filename(fpath, experiment=None,
                     and not re.search('\d{3}', c)])
     if condition is not None:
         condition = condition.lower()
+    if fly_id is not None:
+        fly_id = fly_id.lower()
+
 
     return experiment, date_str, fly_id, condition
 
@@ -241,8 +244,9 @@ def load_dataframe(fpath, verbose=False, experiment=None,
 
     # check for wonky skips
     figpath = os.path.join(savedir, 'errors', 'wonkyft_{}.png'.format(fname)) if savedir is not None else None
-    if not os.path.exists(os.path.join(savedir, 'errors')):
-        os.makedirs(os.path.join(savedir, 'errors'))
+    if savedir is not None:
+        if not os.path.exists(os.path.join(savedir, 'errors')):
+            os.makedirs(os.path.join(savedir, 'errors'))
 
     if figpath is None and plot_errors is True:
         print("[warning]: Provide savedir to save errors fig")
@@ -358,6 +362,13 @@ def load_dataframe_resampled_csv(fpath):
     for c in other_cols:
         df0[c] = df_full[c]
 
+    file_id = [f for f in fpath.split('/') if re.findall('[0-9]{8}', f)][0]
+    condition = os.path.split(os.path.split(fpath)[0])[-1] # assumes `et` and `replay` are parents dirs of .csv for hdeltac
+    df0['condition'] = condition
+    df0['fly_id'] = file_id
+    df0['trial_id'] = ['_'.join([fly_id, cond]) for (fly_id, cond) \
+                   in df0[['fly_id', 'condition']].values]
+
     return df0
 
 def save_df(df, fpath):
@@ -404,7 +415,8 @@ def correct_manual_conditions(df, experiment, logdf=None):
         df['genotype'] = ''
     return df
 
-def load_combined_df(src_dir=None, log_files=None, logdf=None, experiment=None, savedir=None, 
+def load_combined_df(src_dir=None, log_files=None, logdf=None, is_csv=False, 
+                experiment=None, savedir=None, 
                 create_new=False, verbose=False, save_errors=True, remove_invalid=True, 
                 process=True, save=True, parse_filename=True, 
                 rootdir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
@@ -457,7 +469,8 @@ def load_combined_df(src_dir=None, log_files=None, logdf=None, experiment=None, 
 
     if log_files is None:
         print("Creating new combined df from raw files...")
-        log_files = sorted([k for k in glob.glob(os.path.join(src_dir, '*.log'))\
+        log_fmt = 'csv' if is_csv else 'log'
+        log_files = sorted([k for k in glob.glob(os.path.join(src_dir, '*.{}'.format(log_fmt)))\
                 if 'lossed tracking' not in k], key=util.natsort)
     print("Processing {} tracking files.".format(len(log_files)))
 
@@ -472,8 +485,11 @@ def load_combined_df(src_dir=None, log_files=None, logdf=None, experiment=None, 
                     print(fi, datestr, fly_id, cond)
                 except Exception as e:
                     print(fname)
-                    parse_filename=False 
-            df_ = load_dataframe(fn, verbose=False, experiment=experiment, 
+                    parse_filename=False
+            if is_csv:
+                df_  = load_dataframe_resampled_csv(fn)
+            else:
+                df_ = load_dataframe(fn, verbose=False, experiment=experiment, 
                                 parse_filename=parse_filename,
                                 savedir=savedir, remove_invalid=remove_invalid, plot_errors=save_errors)
             dlist.append(df_)
@@ -493,118 +509,8 @@ def load_combined_df(src_dir=None, log_files=None, logdf=None, experiment=None, 
 
     return df
 
-
-def check_entryside_and_flip(df_, strip_width=50, odor_dict=None, verbose=False):
-    '''
-    Check if animal enters on corridor's left or right edge. Flip so that animal 
-    enters on corridor's RIGHT edge (animal's left side). 
-
-    Arguments:
-        df_ -- _description_
-
-    Keyword Arguments:
-        strip_width -- _description_ (default: {50})
-        odor_dict -- _description_ (default: {{}})
-        verbose -- _description_ (default: {False})
-
-    Returns:
-        df_fp (pd.DataFrame) : dataframe with coords flipped to have tracking on odor RIGHT edge (fly's left)
-        new_borders (dict) : odor borders for flipped
-    '''
-    new_borders={}
-    if odor_dict is None:
-        odor_dict, in_odor = get_odor_grid(df_, strip_width=strip_width)
-    if not in_odor:
-        return 
-    entry_ixs = [int(k[1:]) for k, v in odor_dict.items()]
-    df_copy = df_.copy()
-    df_copy['flipped'] = False
-    for si, entry_ix in enumerate(entry_ixs):
-        #df.loc[start_ix]
-        if entry_ix == 0:
-            last_bout_ix = 0
-        else:
-            last_outbout_ix = df_.loc[entry_ix-1].name
-        start_ = df_.iloc[0].name if si==0 else last_outbout_ix
-        stop_ = df_.iloc[-1].name if entry_ix == entry_ixs[-1] else entry_ixs[si+1]-1
-        tmpdf = df_.loc[start_:stop_]
-        oparams = get_odor_params(tmpdf.loc[start_:stop_], strip_width=strip_width, 
-                                        is_grid=True, get_all_borders=False, entry_ix=entry_ix)
-        if verbose:
-            print('... {}: {}'.format(si, oparams['entry_left_edge']))
-        if oparams['entry_left_edge']:
-            # flip it
-            xp, yp = util.fliplr_coordinates(tmpdf['ft_posx'].values, tmpdf['ft_posy'].values)
-                # util.rotate_coordinates(df1['ft_posx'], df1['ft_posy'], -np.pi)
-            df_copy.loc[tmpdf.index, 'ft_posx'] = xp
-            df_copy.loc[tmpdf.index, 'ft_posy'] = yp
-            border_flip1, _ = util.fliplr_coordinates(oparams['odor_boundary'][0][0], 0) 
-            border_flip2, _ = util.fliplr_coordinates(oparams['odor_boundary'][0][1], 0)
-            df_copy.loc[tmpdf.index, 'flipped'] = True
-        else:
-            border_flip1, border_flip2 = oparams['odor_boundary'][0]
-        
-        new_borders.update({'c{}'.format(entry_ix): (border_flip1, border_flip2)})
-            
-    return df_copy, new_borders
-
-def check_entry_left_edge(df, entry_ix=None, return_bool=False):
-    '''
-    Check whether fly enters from left/right of corridor based on prev tsteps.
-
-    Arguments:
-        df (pd.DataFrame) : dataframe with true indices
-        entry_ix (int) : index of entry point
-
-    Returns:
-        entry_left (bool) : entered left True, otherwise False
-    '''
-    # if start of experiment, 1st odor start centered on animal
-    # so look at 2nd odor bout
-
-    # check first entry *after* odor start that is also UPWIND
-    outbouts_after_entry = df[~df['instrip']].loc[entry_ix:] #.iloc[0].name
-    upwind_before_entry = [b for b, b_ in outbouts_after_entry.groupby('boutnum') \
-                            if b_.iloc[-20:]['ft_posy'].diff().sum()>=0]
-    entry_lefts=[]
-    for start_at_this_outbout in upwind_before_entry:
-        # get first INSTRIP frame that is after the 1st odor bout and also upwind
-        try:
-            exit_ix = df[df['boutnum']>=start_at_this_outbout].iloc[0].name
-            df_tmp = df.loc[exit_ix:]
-            test_entry_ix = df_tmp[df_tmp['instrip']].iloc[0].name
-        except IndexError as e:
-            # this is a second (or later) entry
-            continue
-        # if values are increasing, then fly is entering on border's left edge,
-        #  i.e., animal enters to the strip's right
-        cumsum = df_tmp.loc[test_entry_ix-20:test_entry_ix]['ft_posx'].diff().sum()
-        if cumsum > 0: # entry is from LEFT of strip (values get larger)
-            entry_left_edge=True
-        elif cumsum < 0: # entry is into RIGHT side of strip
-            entry_left_edge=False
-        else:
-            entry_left_edge=None
-        entry_lefts.append((test_entry_ix, entry_left_edge))
-
-    # if majority of entries (>50%) are on the left, left-enterer, otherwise not.
-    entry_vals = [i[1] for i in entry_lefts]
-    try:
-        if sum(entry_vals)/len(entry_vals) > 0.5:
-            entry_left_edge=True
-        elif sum(entry_vals)/len(entry_vals) < 0.5:
-            entry_left_edge=False
-        else:
-            entry_left_edge=None
-    except ZeroDivisionError:
-        entry_left_edge=None
-
-    if return_bool:
-        return entry_left_edge, entry_lefts    
-    else: 
-        return entry_left_edge
- 
-
+# strip-related calculations
+# --------------------------------------------------------------------
 def get_odor_params(df, strip_width=50, strip_sep=200, get_all_borders=True,
                     entry_ix=None, is_grid=False, check_odor=False, 
                     mfc_var='mfc2_stpt'):
@@ -642,7 +548,7 @@ def get_odor_params(df, strip_width=50, strip_sep=200, get_all_borders=True,
         odor_borders, entry_left_edge = find_strip_borders(df, 
                                 strip_width=strip_width, strip_sep=strip_sep, 
                                 get_all_borders=get_all_borders, entry_ix=None, is_grid=is_grid,
-                                get_entry_side=True)
+                                return_entry_sides=True)
 
         odor_start_time = df[df['instrip']].iloc[0]['time']
         odor_start_posx = df[df['instrip']].iloc[0]['ft_posx']
@@ -664,7 +570,163 @@ def get_odor_params(df, strip_width=50, strip_sep=200, get_all_borders=True,
 
     return odor_params
 
-def find_strip_borders(df, entry_ix=None, strip_width=50, get_entry_side=False,
+
+
+def check_entryside_and_flip(df_, strip_width=50, odor_dict=None, verbose=False):
+    '''
+    Check if animal enters on corridor's left or right edge. Flip so that animal 
+    enters on corridor's RIGHT edge (animal's left side). 
+
+    Arguments:
+        df_ -- _description_
+
+    Keyword Arguments:
+        strip_width -- _description_ (default: {50})
+        odor_dict -- _description_ (default: {{}})
+        verbose -- _description_ (default: {False})
+
+    Returns:
+        df_fp (pd.DataFrame) : dataframe with coords flipped to have tracking on odor RIGHT edge (fly's left)
+        new_borders (dict) : odor borders for flipped
+    '''
+    new_borders={}
+    in_odor = odor_dict is not None
+    if odor_dict is None:
+        odor_dict, in_odor = get_odor_grid(df_, strip_width=strip_width)
+    if not in_odor:
+        return 
+    entry_ixs = [int(k[1:]) for k, v in odor_dict.items()]
+    df_copy = df_.copy()
+    df_copy['flipped'] = False
+    for si, entry_ix in enumerate(entry_ixs):
+        #df.loc[start_ix]
+        if entry_ix == 0:
+            last_bout_ix = 0
+        else:
+            last_outbout_ix = df_.loc[entry_ix-1].name
+        start_ = df_.iloc[0].name if si==0 else last_outbout_ix
+        stop_ = df_.iloc[-1].name if entry_ix == entry_ixs[-1] else entry_ixs[si+1]-1
+        tmpdf = df_.loc[start_:stop_]
+        oparams = get_odor_params(tmpdf.loc[start_:stop_], strip_width=strip_width, 
+                                        is_grid=True, get_all_borders=False, entry_ix=entry_ix)
+        if verbose:
+            print('... {}: {}'.format(si, oparams['entry_left_edge']))
+        if oparams['entry_left_edge']:
+            # flip it
+            xp, yp = util.fliplr_coordinates(tmpdf['ft_posx'].values, tmpdf['ft_posy'].values)
+                # util.rotate_coordinates(df1['ft_posx'], df1['ft_posy'], -np.pi)
+            df_copy.loc[tmpdf.index, 'ft_posx'] = xp
+            df_copy.loc[tmpdf.index, 'ft_posy'] = yp
+            border_flip1, _ = util.fliplr_coordinates(oparams['odor_boundary'][0][0], 0) 
+            border_flip2, _ = util.fliplr_coordinates(oparams['odor_boundary'][0][1], 0)
+            df_copy.loc[tmpdf.index, 'flipped'] = True
+        else:
+            border_flip1, border_flip2 = oparams['odor_boundary'][0]
+        
+        new_borders.update({'c{}'.format(entry_ix): (border_flip1, border_flip2)})
+
+    # flip headigs
+    for heading_var in ['ft_heading', 'heading']:
+        if heading_var in df_copy.columns:
+            df_copy['{}_og'.format(heading_var)] = df_[heading_var].values
+            df_copy[heading_var] = df_[heading_var].values
+            tmpdf = df_copy[df_copy['flipped']]['{}_og'.format(heading_var)]
+
+            #df_copy['{}_og'.format(heading_var)] = df_copy[heading_var].values
+            #vals = -1*df_copy[df_copy['flipped']]['{}_og'.format(heading_var)].values
+            #df_copy.loc[df_copy['flipped'], heading_var] = vals
+            vals = -1*tmpdf.values
+            df_copy.loc[tmpdf.index, heading_var] = vals
+
+    return df_copy, new_borders
+
+def check_entry_left_edge(df, entry_ix=None, nprev_steps=5, 
+            return_bool=False, only_upwind_outbouts=False):
+    '''
+    Check whether fly enters from left/right of corridor based on prev tsteps.
+
+    Arguments:
+        df (pd.DataFrame) : dataframe with true indices
+        entry_ix (int) : index of entry point
+
+    Returns:
+        entry_left (bool) : entered left True, otherwise False
+        entry_df (pd.DataFrame) : if return_bool, dataframe (entry_index, prev_outbout_num, enterd_left_bool) for each instrip bout entry
+    '''
+    # if start of experiment, 1st odor start centered on animal
+    # so look at 2nd odor bout
+    if entry_ix is None:
+        entry_ix = df[df['instrip']].iloc[0].name 
+    # check first entry *after* odor start that is also UPWIND
+    from_odor_onset = df.loc[entry_ix:].copy()
+    outdfs_after_entry = from_odor_onset[~from_odor_onset['instrip']]
+    #outbouts_after_entry = df[~df['instrip']].loc[entry_ix:] 
+    # only if last N (=20) time steps are roughly upwind (i.e., not downwind) into the strip, 
+    # otherwise left/right difficult to distinguish
+    outbouts_after_entry = outdfs_after_entry['boutnum'].unique()
+    upwind_before_entry = [b for b, b_ in outdfs_after_entry.groupby('boutnum') \
+                            if b_.iloc[-nprev_steps:]['ft_posy'].diff().sum()>=0]
+    bouts_to_check = upwind_before_entry if only_upwind_outbouts else outbouts_after_entry
+    # for each outbout that is upwind just prior to an entry, determine if entering 
+    # on LEFT or RIGHT edge of strip
+    entry_lefts=[]
+    for start_at_this_outbout in bouts_to_check: #upwind_before_entry:
+        # get first INSTRIP frame that is after the 1st odor bout and also upwind
+        try:
+            # get the first outbout index and the following inbout index
+            exit_ix = df[df['boutnum']>=start_at_this_outbout].iloc[0].name
+            df_tmp = df.loc[exit_ix:]
+            test_entry_ix = df_tmp[df_tmp['instrip']].iloc[0].name
+        except IndexError as e:
+            # this is a second (or later) entry
+            continue
+        # If values are increasing, then fly is entering on strip's left edge,
+        # i.e., animal enters on its right side
+        #s_ix = test_entry_ix - nprev_steps
+        #e_ix = test_entry_ix + nprev_steps*2.
+        min_steps = min([df_tmp.groupby(['boutnum']).count().min().min(), nprev_steps])
+        max_steps = min([df_tmp.groupby(['boutnum']).count().min().min(), nprev_steps])
+        # print(min_steps, max_steps)
+        s_ix = test_entry_ix - min_steps
+        e_ix = test_entry_ix + max_steps
+        cumsum = df_tmp.loc[s_ix:e_ix]['ft_posx'].diff().sum()
+        if cumsum > 0: # entry is from LEFT of strip (values get larger)
+            entry_left_edge=True
+        elif cumsum < 0: # entry is into RIGHT side of strip (values get smaller)
+            entry_left_edge=False
+        else:
+            entry_left_edge=None
+        entry_lefts.append((test_entry_ix, start_at_this_outbout, entry_left_edge))
+
+    entry_df = pd.DataFrame(data=entry_lefts, \
+                    columns=['entry_index', 'previous_outbout', 'entry_left_edge'])
+
+    # if majority of entries (>50%) are on the left, left-enterer, otherwise not.
+    entry_vals = entry_df['entry_left_edge'].values #[i[-1] for i in entry_lefts]
+    try:
+        if sum(entry_vals)/len(entry_vals) > 0.5:
+            entry_left_edge=True
+        elif sum(entry_vals)/len(entry_vals) < 0.5:
+            entry_left_edge=False
+        else:
+            entry_left_edge=None
+    except ZeroDivisionError:
+        entry_left_edge=None
+
+    if return_bool:
+        # compare each val to previous val then apply cumsum to get counter value for each group
+        # of consecutive vals
+        entry_df['consecutive_bout'] = entry_df['entry_left_edge']\
+                                        .ne(entry_df['entry_left_edge'].shift()).cumsum()
+        # count N consecutive values for each bout or group of consecutive values
+        entry_df['consecutive_count'] = (entry_df.groupby(entry_df['entry_left_edge']\
+                                        .ne(entry_df['entry_left_edge'].shift()).cumsum())
+                                        .cumcount())
+        return entry_left_edge, entry_df
+    else: 
+        return entry_left_edge
+ 
+def find_strip_borders(df, entry_ix=None, strip_width=50, return_entry_sides=False,
                         strip_sep=200, is_grid=True, get_all_borders=True):
     '''
     Get all strip borders using get_odor_grid() OR taking first values of instrip.
@@ -712,11 +774,18 @@ def find_strip_borders(df, entry_ix=None, strip_width=50, get_entry_side=False,
         odor_xmax = currdf[currdf['instrip']].iloc[0]['ft_posx'] + (strip_width/2.)
         odor_borders = [(odor_xmin, odor_xmax)]
 
-    if get_entry_side:
+    if return_entry_sides:
         return odor_borders, entry_left_edge
     else:
         return odor_borders
  
+
+def find_crossovers(df_, strip_width=50):
+    crossover_bouts = [bnum for bnum, b_ in df_[df_['instrip']].groupby('boutnum') \
+                         if np.ceil(b_['ft_posx'].max() - b_['ft_posx'].min()) >= strip_width]
+    return crossover_bouts
+
+
 
 # ---------------------------------------------------------------------- 
 # Data processing
@@ -889,14 +958,14 @@ def get_bout_durs(df, bout_varname='boutnum'):
     boutdurs={}
     grouper = ['boutnum']
     for boutnum, df_ in df.groupby(bout_varname):
-        boutdur = df_.iloc[-1]['time'] - df_.iloc[0]['time']
+        boutdur = df_.sort_values(by='time').iloc[-1]['time'] - df_.iloc[0]['time']
         boutdurs.update({boutnum: boutdur})
 
     return boutdurs
 
 def filter_bouts_by_dur(df, bout_thresh=0.5, bout_varname='boutnum', 
                         count_varname='instrip', speed_varname='smoothed_speed', 
-                        verbose=False):
+                        verbose=False, switch_method='previous'):
     '''
     Calculate bout durs, and ignore bouts that are too short (0.5 sec default).
     Overwrites too-short bouts with previous bout (assigns In/Out strip).
@@ -932,8 +1001,13 @@ def filter_bouts_by_dur(df, bout_thresh=0.5, bout_varname='boutnum',
     while len(too_short) > 0:
         for boutnum, df_ in df.groupby(bout_varname):
             if boutdurs[boutnum] < bout_thresh:
-                # opposite of whatever it is
-                df.loc[df_.index, count_varname] = ~df_[count_varname]
+                if switch_method=='reverse':
+                    # opposite of whatever it is
+                    df.loc[df_.index, count_varname] = ~df_[count_varname]
+                elif switch_method=='previous':
+                    # prev bouts value
+                    prev_value = df[df[bout_varname]==(boutnum-1)].iloc[-1][count_varname]
+                    df.loc[df_.index, count_varname] = prev_value
         # reparse bouts
         df = parse_bouts(df, count_varname=count_varname, bout_varname=bout_varname)
         # calc bout durations
@@ -1121,11 +1195,11 @@ def find_odor_grid(df, strip_width=10, strip_sep=200, plot=True):
     while nextgrid_df.shape[0] > 0:
         # get odor params of next corridor
         last_ix = nextgrid_df[nextgrid_df['instrip']].iloc[0].name
-        next_odorp = get_odor_params(df, strip_width=strip_width, 
+        next_odorp = get_odor_params(df.loc[last_ix:], strip_width=strip_width, 
                             entry_ix=last_ix, is_grid=True, get_all_borders=False)
         # update odor param dict
-        odor_grid.update({'c{}'.format(last_ix): (next_odorp['odor_boundary'])})
-        (curr_odor_xmin, curr_odor_xmax) = next_odorp['odor_boundary']
+        odor_grid.update({'c{}'.format(last_ix): next_odorp['odor_boundary'][0]})
+        (curr_odor_xmin, curr_odor_xmax) = next_odorp['odor_boundary'][0]
         # look for another odor corridor (outside of current odor boundary, but instrip)
         nextgrid_df = indf[ (indf['ft_posx'] >= (curr_odor_xmax+strip_sep)) \
                         | ((indf['ft_posx'] <= (curr_odor_xmin-strip_sep))) ]\
@@ -1913,9 +1987,10 @@ def plot_trajectory_from_file(fpath, parse_filename=False, strip_width=10, strip
 
 def plot_trajectory(df0, odor_bounds=[], ax=None,
         xvar='ft_posx', yvar='ft_posy',
-        hue_varname='instrip', palette={True: 'r', False: 'w'},
+        hue_varname='instrip', palette={True: 'r', False: 'w'}, 
         start_at_odor = True, odor_lc='lightgray', odor_lw=0.5, title='',
-        markersize=0.5, center=False, plot_legend=True):
+        markersize=0.5, alpha=1.0, 
+        center=False, xlim=200, plot_odor_onset=True, plot_legend=True):
 
     # ---------------------------------------------------------------------
     if ax is None: 
@@ -1924,25 +1999,26 @@ def plot_trajectory(df0, odor_bounds=[], ax=None,
         odor_bounds = [odor_bounds]
     sns.scatterplot(data=df0, x=xvar, y=yvar, ax=ax, 
                     hue=hue_varname, s=markersize, edgecolor='none', palette=palette,
-                    legend=plot_legend)
+                    legend=plot_legend, alpha=alpha)
     # odor corridor
     for (odor_xmin, odor_xmax) in odor_bounds:
         plot_odor_corridor(ax, odor_xmin=odor_xmin, odor_xmax=odor_xmax)
     # odor start time
     if df0[df0['instrip']].shape[0]>0:
         odor_start_ix = df0[df0['instrip']].iloc[0][yvar]
-        ax.axhline(y=odor_start_ix, color='w', lw=0.5, linestyle=':')
+        if plot_odor_onset:
+            ax.axhline(y=odor_start_ix, color='w', lw=0.5, linestyle=':')
     ax.legend(bbox_to_anchor=(1,1), loc='upper left', title=hue_varname, frameon=False)
     ax.set_title(title)
     xmax=500
     if center:
-        ax.set_xlim([-300, 300]) 
+        ax.set_xlim([-xlim, xlim]) 
     else:
         try:
             # Center corridor   
             xmin = np.floor(df0[xvar].min())
             xmax = np.ceil(df0[xvar].max())
-            ax.set_xlim([-xmax-20, xmax+20])
+            ax.set_xlim([xmin-20, xmax+20])
         except ValueError as e:
             xmax = 500
     pl.subplots_adjust(left=0.2, right=0.8)
@@ -2040,17 +2116,20 @@ def get_quiverplot_inputs(df_, xvar='ft_posx', yvar='ft_posy'):
 
 
 def plot_all_flies(df_, hue_varname='instrip',  plot_borders=True,
-                    palette={True: 'r', False: 'w'}, strip_width=50, col_wrap=4):
-    fly_ids = list(df_.groupby('fly_id').groups.keys())
-    g = sns.FacetGrid(df_, col='fly_id', col_wrap=col_wrap,
-                    col_order=fly_ids)
+                    palette={True: 'r', False: 'w'}, strip_width=50, strip_sep=200,
+                    col_wrap=4, is_grid=True):
+    trial_ids = list(df_.groupby('trial_id').groups.keys())
+    g = sns.FacetGrid(df_, col='trial_id', col_wrap=col_wrap,
+                    col_order=trial_ids)
     g.map_dataframe(sns.scatterplot, x="ft_posx", y="ft_posy", hue=hue_varname,
                 s=0.5, edgecolor='none', palette=palette) #, palette=palette)
     g.set_titles(row_template = '{row_name}', col_template = '{col_name}', size=6)
     if plot_borders:
         # add strip borders
-        for ax, fly_id in zip(g.axes.flat, fly_ids):
-            odor_borders = find_strip_borders(df_[df_['fly_id']==fly_id])  
+        for ax, trial_id in zip(g.axes.flat, trial_ids):
+            odor_borders = find_strip_borders(df_[df_['trial_id']==trial_id],
+                                    strip_width=strip_width, strip_sep=strip_sep, 
+                                    get_all_borders=True, entry_ix=None, is_grid=is_grid)  
             #odor_half = strip_width/2.
             for (odor_xmin, odor_xmax) in odor_borders:
                 plot_odor_corridor(ax, odor_xmin=odor_xmin, odor_xmax=odor_xmax) 
