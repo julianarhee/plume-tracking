@@ -239,6 +239,7 @@ def circular_hist(ax, x, bins=16, density=True, offset=0, gaps=True,
                     edgecolor='w', facecolor=[0.7]*3, alpha=0.7, lw=0.5):
     """
     Produce a circular histogram of angles on ax.
+    From: https://stackoverflow.com/questions/22562364/circular-polar-histogram-in-python
 
     Parameters
     ----------
