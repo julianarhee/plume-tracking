@@ -214,7 +214,7 @@ def load_dataframe(fpath, verbose=False, experiment=None,
     # convert ft_heading to make it continuous and in range (-pi, pi)
     if 'ft_heading' in df0.columns:
         p = util.unwrap_and_constrain_angles(df0['ft_heading'].values)
-        df0['ft_heading'] = p # -p 
+        df0['ft_heading'] = p #-p 
 
     # Calculate MDF odor on or off 
     mfc_vars = [c for c in df0.columns if 'mfc' in c]
@@ -887,6 +887,19 @@ def calculate_angular_velocity(df, time_var='time',
     angvel = wx**2 + wy**2 + wz**2
 
     return angvel
+
+def to_unit_vector(pitch, yaw, roll):
+    # Calculate unit vector components
+    x = np.cos(yaw) * np.cos(pitch)
+    y = np.sin(yaw) * np.cos(pitch)
+    z = np.sin(pitch)
+    return x, y, z
+
+import math 
+def angle_between(a, b):
+    # returns angle in degrees
+    return math.atan2( np.sqrt( np.dot( np.cross(a, b), np.cross(a, b))), np.dot(a, b))
+
 
 def calculate_speed(df0, xvar='ft_posx', yvar='ft_posy'):
     '''
@@ -2691,7 +2704,8 @@ def overlay_angles_on_path(ax, currbout, subsample=True, nth=None, lw=1,
                         colors = ['cyan', 'magenta'], scales=[1, 1], alpha=0.7):
     if isinstance(scales, (int, float)):
         scales = [scales]*len(currbout)
-    nth = int(np.floor( currbout.shape[0] /100))
+    if nth is None:
+        nth = int(np.floor( currbout.shape[0] / 200))
     b_ = currbout.iloc[0::nth] if nth>=1 else currbout.copy()
     ax.plot( b_['ft_posx'], b_['ft_posy'], color='w', lw=0.25)
     if len(colors) == len(varnames):
@@ -2710,5 +2724,8 @@ def overlay_angles_on_path(ax, currbout, subsample=True, nth=None, lw=1,
             else:
                 for col, (i, (x, y, a)) in zip(colors, b_[['ft_posx', 'ft_posy', var]].iterrows()):
                     draw_line(ax, x, y, a, scale, lc=col, alpha=alpha, lw=lw)    
+        # add colorbar
+
+
     return ax
 
