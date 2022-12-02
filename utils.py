@@ -73,6 +73,23 @@ def make_ordinal(n):
 # ----------------------------------------------------------------------
 # Calculation
 # ----------------------------------------------------------------------
+def signed_angle_from_target(b_, target_angle=-np.pi, varname='heading'):
+    """
+    Calculate signed angle from left edge, unit vector (-1, 0), -np.pi.
+    Assumes values go from -pi, pi. Make jumps from 180 to -180 continuous with np.rad2deg(angbetween) % 360.
+    Use utils.circular_dist() for shortest angle, constrained [0, pi).
+    """
+    vals = b_[varname].copy().values
+    # If subtracting -pi/2, values in lower-right quadrant should be flipped
+    # to make -90 (or 270) to +90 map continuously as -90 to -270 (bottom half) 
+    flip_discontinous_quadrant = np.where(b_[varname]>np.pi/2)[0]
+    # flip the values
+    flipped_vals = -np.pi - (np.pi-vals[flip_discontinous_quadrant])
+    # 
+    vals[flip_discontinous_quadrant] = flipped_vals
+    angbetween = (-np.pi/2 - vals ) #% np.pi/2
+    return angbetween
+
 def circular_mean(values):
     # calculate mean fo cos/sin components separately, input angles in [0, 2pi).
     mean_cos = np.mean(np.cos(values))
@@ -195,6 +212,9 @@ def set_sns_style(style='dark'):
                     'legend.fontsize': 6,
                     'legend.title_fontsize': 6
         }
+    for k, v in font_styles.items():
+        pl.rcParams[k] = v
+
     if style=='dark':
         custom_style = {
                     'axes.labelcolor': 'white',
@@ -213,6 +233,8 @@ def set_sns_style(style='dark'):
         sns.set_style("dark", rc=custom_style)
 
     pl.rcParams['savefig.dpi'] = 400
+    pl.rcParams['figure.figsize'] = [6,4]
+
 
 #def add_colorwheel(fig, cmap='hsv', axes=[0.8, 0.8, 0.1, 0.1], fontsize=7,
 #                   theta_range=[-np.pi, np.pi], deg2plot=None, theta_units='rad'):
@@ -348,7 +370,7 @@ def circular_hist(ax, x, bins=16, density=True, offset=0, gaps=True,
      
     return n, bins, patches
 
-def colorbar_from_mappable(ax, norm, cmap, hue_title='', axes=[0.85, 0.85, 0.1, 0.6]): #pad=0.05):
+def colorbar_from_mappable(ax, norm, cmap, hue_title='', axes=[0.85, 0.3, 0.01, 0.4]): #pad=0.05):
     from mpl_toolkits.axes_grid1 import make_axes_locatable
 
     fig = ax.figure
@@ -366,7 +388,8 @@ def colorbar_from_mappable(ax, norm, cmap, hue_title='', axes=[0.85, 0.85, 0.1, 
     #pl.colorbar(im, cax=cax)
 
 def plot_vector_path(ax, x, y, c, scale=1.5, width=0.005, headwidth=5, pivot='tail', 
-                    colormap=mpl.cm.plasma, vmin=None, vmax=None, hue_title=''):
+                    colormap=mpl.cm.plasma, vmin=None, vmax=None, hue_title='',
+                    axes=[0.8, 0.3, 0.01, 0.4]):
     if vmin is None:
         #vmin, vmax = b_[hue_param].min(), b_[hue_param].max()
         vmin, vmax = c.min(), c.max()
@@ -384,7 +407,7 @@ def plot_vector_path(ax, x, y, c, scale=1.5, width=0.005, headwidth=5, pivot='ta
     ax.quiver(x, y, uu, vv, color=colormap(norm(c)), 
               angles='xy', scale_units='xy', scale=scale, pivot=pivot,
               width=width, headwidth=headwidth)
-    colorbar_from_mappable(ax, norm, cmap=colormap, hue_title=hue_title)
+    colorbar_from_mappable(ax, norm, cmap=colormap, hue_title=hue_title, axes=axes)
     return ax
 
 
