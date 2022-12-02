@@ -73,6 +73,40 @@ def make_ordinal(n):
 # ----------------------------------------------------------------------
 # Calculation
 # ----------------------------------------------------------------------
+def circular_mean(values):
+    # calculate mean fo cos/sin components separately, input angles in [0, 2pi).
+    mean_cos = np.mean(np.cos(values))
+    mean_sin = np.mean(np.sin(values))
+    x = np.arctan2(mean_sin, mean_cos)
+
+    return x
+
+def circular_dist(angle1, angle2):
+    ''' takes smaller of the arc lengths, lies in [0, pi)'''
+    return np.pi - abs(np.pi - abs(angle1-angle2))
+
+
+def circular_median(values):
+    '''
+    Median as min. distance to all other observations in sample.
+
+    Arguments:
+        values -- _description_
+
+    Returns:
+        _description_
+    '''
+    dist = [sum([circular_dist(mid_angle, angle) for angle in values])\
+                for mid_angle in values]
+    if not len(values) % 2:
+        sorted_dist = np.argsort(dist)
+        mid_angles = values[sorted_dist[0:2]]
+        return np.mean(mid_angles)
+    else:
+        return values[np.agmin(dist)]
+
+
+
 def get_CoM(df_, xvar='ft_posx', yvar='ft_posy'):
     '''
     Calculate center of mass from coords x0, y0 in dataframe df_
@@ -180,36 +214,40 @@ def set_sns_style(style='dark'):
 
     pl.rcParams['savefig.dpi'] = 400
 
-def add_colorwheel(fig, cmap='hsv', axes=[0.8, 0.8, 0.1, 0.1], fontsize=7,
-                   theta_range=[-np.pi, np.pi], deg2plot=None, theta_units='rad'):
-    display_axes = fig.add_axes(axes, projection='polar')
-    # display_axes._direction = max(theta_range) #2*np.pi ## This is a nasty hack - using the hidden field to 
-                                      ## multiply the values such that 1 become 2*pi
-                                      ## this field is supposed to take values 1 or -1 only!!
-    #norm = mpl.colors.Normalize(0.0, 2*np.pi)
-    if theta_units=='deg':
-        theta_range = np.deg2rad(theta_range)
-
-    norm = mpl.colors.Normalize(theta_range[0], theta_range[1])
-
-    # Plot the colorbar onto the polar axis
-    # note - use orientation horizontal so that the gradient goes around
-    # the wheel rather than centre out
-    quant_steps = 2056
-    cb = mpl.colorbar.ColorbarBase(display_axes, cmap=mpl.cm.get_cmap(cmap, quant_steps),
-                                       norm=norm, orientation='horizontal')
-    # aesthetics - get rid of border and axis labels                                   
-    cb.outline.set_visible(False)                                 
-    #display_axes.set_axis_off()
-    #display_axes.set_rlim([-1,1])
-    if deg2plot is not None:
-        display_axes.plot([0, deg2plot], [0, 1], 'k')
-    
-    #display_axes.set_theta_zero_location('W')
-    return display_axes
-
-def add_colorwheel(fig, cmap='hsv', axes=[0.7, 0.7, 0.3, 0.3], 
+#def add_colorwheel(fig, cmap='hsv', axes=[0.8, 0.8, 0.1, 0.1], fontsize=7,
+#                   theta_range=[-np.pi, np.pi], deg2plot=None, theta_units='rad'):
+#    display_axes = fig.add_axes(axes, projection='polar')
+#    # display_axes._direction = max(theta_range) #2*np.pi ## This is a nasty hack - using the hidden field to 
+#                                      ## multiply the values such that 1 become 2*pi
+#                                      ## this field is supposed to take values 1 or -1 only!!
+#    #norm = mpl.colors.Normalize(0.0, 2*np.pi)
+#    if theta_units=='deg':
+#        theta_range = np.deg2rad(theta_range)
+#
+#    norm = mpl.colors.Normalize(theta_range[0], theta_range[1])
+#
+#    # Plot the colorbar onto the polar axis
+#    # note - use orientation horizontal so that the gradient goes around
+#    # the wheel rather than centre out
+#    quant_steps = 2056
+#    cb = mpl.colorbar.ColorbarBase(display_axes, cmap=mpl.cm.get_cmap(cmap, quant_steps),
+#                                       norm=norm, orientation='horizontal')
+#    # aesthetics - get rid of border and axis labels                                   
+#    cb.outline.set_visible(False)                                 
+#    #display_axes.set_axis_off()
+#    #display_axes.set_rlim([-1,1])
+#    if deg2plot is not None:
+#        display_axes.plot([0, deg2plot], [0, 1], 'k')
+#    
+#    #display_axes.set_theta_zero_location('W')
+#    return display_axes
+#
+def add_colorwheel(fig, cmap='hsv', axes=[0.8, 0.8, 0.1, 0.1], 
                    theta_range=[-np.pi, np.pi], deg2plot=None):
+
+    '''
+    Assumes values go from 0-->180, -180-->0. (radians).
+    ''' 
     display_axes = fig.add_axes(axes, projection='polar')
     #display_axes._direction = max(theta_range) #2*np.pi ## This is a nasty hack - using the hidden field to 
                                       ## multiply the values such that 1 become 2*pi
@@ -310,17 +348,24 @@ def circular_hist(ax, x, bins=16, density=True, offset=0, gaps=True,
      
     return n, bins, patches
 
-def colorbar_from_mappable(ax, norm, cmap, hue_title=''):
+def colorbar_from_mappable(ax, norm, cmap, hue_title='', axes=[0.85, 0.85, 0.1, 0.6]): #pad=0.05):
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+
     fig = ax.figure
     #ax.legend_.remove()
+    #divider = make_axes_locatable(ax)
+    #cax = divider.append_axes("right", size="5%", pad=pad)
+    cax = fig.add_axes(axes) 
     sm =  mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
     sm.set_array([])
-    cbar = fig.colorbar(sm, ax=ax)
-    cbar.ax.set_title(hue_title, fontsize=10)
-    cbar.ax.tick_params(labelsize=10)
 
+    cbar = fig.colorbar(sm, cax=cax) #ax=ax)
+    cbar.ax.set_title(hue_title, fontsize=7)
+    cbar.ax.tick_params(labelsize=7)
 
-def plot_vector_path(ax, x, y, c, scale=1.5, width=0.005, headwidth=5,
+    #pl.colorbar(im, cax=cax)
+
+def plot_vector_path(ax, x, y, c, scale=1.5, width=0.005, headwidth=5, pivot='tail', 
                     colormap=mpl.cm.plasma, vmin=None, vmax=None, hue_title=''):
     if vmin is None:
         #vmin, vmax = b_[hue_param].min(), b_[hue_param].max()
@@ -337,7 +382,8 @@ def plot_vector_path(ax, x, y, c, scale=1.5, width=0.005, headwidth=5,
     uu[-1]=np.nan
     vv[-1]=np.nan
     ax.quiver(x, y, uu, vv, color=colormap(norm(c)), 
-              angles='xy', scale_units='xy', scale=scale, width=width, headwidth=headwidth)
+              angles='xy', scale_units='xy', scale=scale, pivot=pivot,
+              width=width, headwidth=headwidth)
     colorbar_from_mappable(ax, norm, cmap=colormap, hue_title=hue_title)
     return ax
 

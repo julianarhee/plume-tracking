@@ -214,7 +214,7 @@ def load_dataframe(fpath, verbose=False, experiment=None,
     # convert ft_heading to make it continuous and in range (-pi, pi)
     if 'ft_heading' in df0.columns:
         p = util.unwrap_and_constrain_angles(df0['ft_heading'].values)
-        df0['ft_heading'] = -p 
+        df0['ft_heading'] = p # -p 
 
     # Calculate MDF odor on or off 
     mfc_vars = [c for c in df0.columns if 'mfc' in c]
@@ -595,6 +595,7 @@ def check_entryside_and_flip(df_, strip_width=50, odor_dict=None, verbose=False)
 
     Returns:
         df_fp (pd.DataFrame) : dataframe with coords flipped to have tracking on odor RIGHT edge (fly's left)
+        (Saves original heading var as heading_og)
         new_borders (dict) : odor borders for flipped
     '''
     new_borders={}
@@ -692,8 +693,8 @@ def check_entry_left_edge(df, entry_ix=None, nprev_steps=5,
         # i.e., animal enters on its right side
         #s_ix = test_entry_ix - nprev_steps
         #e_ix = test_entry_ix + nprev_steps*2.
-        min_steps = min([df_tmp.groupby(['boutnum']).count().min().min(), nprev_steps])
-        max_steps = min([df_tmp.groupby(['boutnum']).count().min().min(), nprev_steps])
+        min_steps = min([df_tmp.groupby(['boutnum'])['boutnum'].count().min(), nprev_steps])
+        max_steps = min([df_tmp.groupby(['boutnum'])['boutnum'].count().min(), nprev_steps*2])
         # print(min_steps, max_steps)
         s_ix = test_entry_ix - min_steps
         e_ix = test_entry_ix + max_steps
@@ -760,8 +761,12 @@ def find_strip_borders(df, entry_ix=None, strip_width=50, return_entry_sides=Fal
             odor_xmin = -(strip_width/2.)
             odor_xmax = strip_width/2.
             return [(odor_xmin, odor_xmax)]
-     
-    entry_left_edge, entry_lefts = check_entry_left_edge(df, entry_ix=entry_ix, return_bool=True)
+    try: 
+        entry_left_edge, entry_lefts = check_entry_left_edge(df, entry_ix=entry_ix, return_bool=True)
+    except Exception as e:
+        traceback.print_exc()
+        print("Error parsing entries for: {}".format(df.iloc[0]['trial_id']))
+
     currdf = df.loc[entry_ix:].copy()
     if entry_left_edge is not None: # entry_left must be true or false
         if get_all_borders:
@@ -799,8 +804,27 @@ def find_crossovers(df_, strip_width=50):
 # Data processing
 # ----------------------------------------------------------------------
 def process_df(df, xvar='ft_posx', yvar='ft_posy', 
-                bout_thresh=0.5, 
+                bout_thresh=0.5, switch_method='previous',
                 smooth=False, window_size=11, verbose=False):
+    '''
+    Parse trajectory into bouts (filter too-short bouts).
+    Calculate speed and distance between each point.
+
+    Arguments:
+        df -- raw dataframe
+
+    Keyword Arguments:
+        xvar -- _description_ (default: {'ft_posx'})
+        yvar -- _description_ (default: {'ft_posy'})
+        bout_thresh (float): min. duration for bout (default: {0.5})
+        smooth (bool): smooth traj (default: {False})
+        switch_method (str): assign too-short bouts to previous or just reverse (default: 'previous')
+        window_size (int): window size if smoothing (default: {11})
+        verbose -- _description_ (default: {False})
+
+    Returns:
+        df, with columns: boutnum, rel_time, cum_time, speed (+upwind/xwind), dist (upwind/xwind), heading, etc.
+    '''
     dlist=[]
     for trial_id, df_ in df.groupby('trial_id'):
         if verbose:
@@ -808,8 +832,9 @@ def process_df(df, xvar='ft_posx', yvar='ft_posy',
         # parse in and out bouts
         df_ = parse_bouts(df_, count_varname='instrip', bout_varname='boutnum') # 1-count
         # filter in and out bouts by min. duration 
-        df_ = filter_bouts_by_dur(df_, bout_thresh=bout_thresh, 
-                            bout_varname='boutnum', count_varname='instrip', verbose=False)
+        df_ = filter_bouts_by_dur(df_, bout_thresh=bout_thresh, verbose=verbose,
+                            bout_varname='boutnum', count_varname='instrip', 
+                            switch_method=switch_method)
         # add some calculations
         df_ = calculate_speed(df_, xvar=xvar, yvar=yvar)
         df_ = calculate_distance(df_, xvar=xvar, yvar=yvar)
@@ -858,8 +883,9 @@ def calculate_angular_velocity(df, time_var='time',
     wx = roll_rate - yaw_rate*np.sin(pitch)
     wy = pitch_rate * np.cos(roll) + yaw_rate * np.sin(roll) * np.cos(pitch)
     wz = yaw_rate * np.cos(roll) * np.cos(pitch) - pitch_rate * np.sin(roll)
-    angvel = np.sqrt(wx**2 + wy**2 + wz**2)
-    
+    #angvel = np.sqrt(wx**2 + wy**2 + wz**2)
+    angvel = wx**2 + wy**2 + wz**2
+
     return angvel
 
 def calculate_speed(df0, xvar='ft_posx', yvar='ft_posy'):
@@ -1018,7 +1044,11 @@ def filter_bouts_by_dur(df, bout_thresh=0.5, bout_varname='boutnum',
         df = parse_bouts(df, count_varname=count_varname, bout_varname=bout_varname)
     # Calc bout durations
     boutdurs = get_bout_durs(df, bout_varname=bout_varname)
-    too_short = [k for k, v in boutdurs.items() if v < bout_thresh]
+    if bout_varname == 'stopboutnum':
+        too_short = [k for k, v in boutdurs.items() if v < bout_thresh \
+                            and bool(df[df[bout_varname]==k]['stopped'].unique())==True]
+    else:
+        too_short = [k for k, v in boutdurs.items() if v < bout_thresh]
 
     if verbose:
         print("Found {} bouts too short (thr={:.2f} sec)".format(len(too_short), bout_thresh))
@@ -1026,19 +1056,39 @@ def filter_bouts_by_dur(df, bout_thresh=0.5, bout_varname='boutnum',
     assert df[count_varname].dtype == bool, "ERR: State <{}> is not bool.".format(count_varname)
     while len(too_short) > 0:
         for boutnum, df_ in df.groupby(bout_varname):
+            #print("too short?", boutdurs[boutnum] < bout_thresh)
+            #df_  = df[df['stopboutnum']==boutnum].copy()
             if boutdurs[boutnum] < bout_thresh:
-                if switch_method=='reverse':
-                    # opposite of whatever it is
-                    df.loc[df_.index, count_varname] = ~df_[count_varname]
-                elif switch_method=='previous':
-                    # prev bouts value
-                    prev_value = df[df[bout_varname]==(boutnum-1)].iloc[-1][count_varname]
-                    df.loc[df_.index, count_varname] = prev_value
+                reassign_value=True
+                if bout_varname=='stopboutnum' and bool(df_[count_varname].unique())==False:
+                    #print("{} dont reassign".format(boutnum))
+                    reassign_value = False
+                if reassign_value:
+                    if boutnum == 1:
+                        print("Changing 1")
+                        prev_value = not bool(df_[count_varname].unique())
+                    else:
+                        prev_value = df[df[bout_varname]==(boutnum-1)].iloc[-1][count_varname]
+                    df.loc[df[bout_varname]==boutnum, count_varname] = prev_value
+
+#        for boutnum, df_ in df.groupby(bout_varname):
+#            if boutdurs[boutnum] < bout_thresh:
+#                if switch_method=='reverse':
+#                    # opposite of whatever it is
+#                    df.loc[df_.index, count_varname] = ~df_[count_varname]
+#                elif switch_method=='previous':
+#                    # prev bouts value
+#                    prev_value = df[df[bout_varname]==(boutnum-1)].iloc[-1][count_varname]
+#                    df.loc[df_.index, count_varname] = prev_value
         # reparse bouts
         df = parse_bouts(df, count_varname=count_varname, bout_varname=bout_varname)
         # calc bout durations
         boutdurs = get_bout_durs(df, bout_varname=bout_varname)
-        too_short = [k for k, v in boutdurs.items() if v < bout_thresh]
+        if bout_varname == 'stopboutnum':
+            too_short = [k for k, v in boutdurs.items() if v < bout_thresh \
+                                and bool(df[df[bout_varname]==k]['stopped'].unique())==True]
+        else:
+            too_short = [k for k, v in boutdurs.items() if v < bout_thresh]
 
     return df
 
@@ -2123,7 +2173,7 @@ def get_speed_and_stops(b_, speed_thresh=1.0, stopdur_thresh=0.5,
     Filter found stop bouts by stopdur_thresh.
 
     Arguments:
-        b_ (pd.DataFrame): dataframe corresponding to 1 bout (though doesn't matter, could be whole DF)
+        b_ (pd.DataFrame): dataframe corresponding whole traj (though doesn't matter, could be whole DF)
 
     Keyword Arguments:
         speed_thresh -- _description_ (default: {1.0})
@@ -2184,26 +2234,61 @@ def mean_dir_after_stop(df, heading_var='ft_heading',theta_range=(-np.pi, np.pi)
     return meandirs
 
 
-def get_bout_metrics(df_, group_vars=['fly_id', 'condition', 'boutnum'],
-                        theta_range=(-np.pi, np.pi)):
-    single_vals = [i for i in df_.columns if len(df_[i].unique())==1\
-                  and i not in group_vars]
-    single_metrics = df_[single_vals].drop_duplicates().reset_index(drop=True).squeeze()
+def get_bout_metrics(df_, heading_vars=['ft_heading', 'heading'],
+                    group_vars=['fly_id', 'condition', 'boutnum'],
+                    theta_range=(-np.pi, np.pi)):
+    '''
+    Calculate metrics for 1 bout. 
+    To do for all bouts: 
+    df.groupby('boutnum').apply(get_bout_metrics).unstack().reset_index()
+
+    Arguments:
+        df_ (pd.DataFrame):  df of 1 single bout
+
+    Keyword Arguments:
+        group_vars -- Identifier vars, same for whole bout (default: {['fly_id', 'condition', 'boutnum']})
+        theta_range -- _description_ (default: {(-np.pi, np.pi)})
+
+    Returns:
+        _description_
+    '''
+    b_ = df_.dropna()
+    io_vars = ['led1_stpt', 'led2_stpt', 'mfc1_stpt', 'mfc2_stpt', 'mfc3_stpt']
+    single_vals = [i for i in b_.columns if len(b_[i].unique())==1\
+                  and i not in group_vars and i not in io_vars]
+    single_metrics = b_[single_vals].drop_duplicates().reset_index(drop=True).squeeze()
     
     lin_vars = ['speed', 'upwind_speed', 'crosswind_speed']
-    lin_metrics = df_[lin_vars].mean() #.reset_index(drop=True)
-    
-    misc = pd.Series({
-        'duration': df_['time'].iloc[-1] - df_['time'].iloc[0],
-        'upwind_dist_range': df_['ft_posy'].max() - df_['ft_posy'].min(),
-        'upwind_dist_firstlast': df_['ft_posy'].iloc[-1] - df_['ft_posy'].iloc[0],
-        'crosswind_dist_range': df_['ft_posx'].max() - df_['ft_posx'].min(),
-        'crosswind_dist_firstlast': df_['ft_posx'].iloc[-1] - df_['ft_posx'].iloc[0],
-        'path_length': df_['euclid_dist'].sum() -  df_['euclid_dist'].iloc[0],
-        'average_heading': sts.circmean(df_['ft_heading'], low=theta_range[0], high=theta_range[1]),
-        'rel_time': df_['rel_time'].iloc[0]
-    }) #, index=[0])
-    
+    lin_metrics = b_[lin_vars].mean() #.reset_index(drop=True)
+
+    mdict = {
+        'duration': b_['time'].iloc[-1] - b_['time'].iloc[0],
+        'upwind_dist_range': b_['ft_posy'].max() - b_['ft_posy'].min(),
+        'upwind_dist_firstlast': b_['ft_posy'].iloc[-1] - b_['ft_posy'].iloc[0],
+        'crosswind_dist_range': b_['ft_posx'].max() - b_['ft_posx'].min(),
+        'crosswind_dist_firstlast': b_['ft_posx'].iloc[-1] - b_['ft_posx'].iloc[0],
+        'path_length': b_['euclid_dist'].sum() -  b_['euclid_dist'].iloc[0],
+        'average_heading': sts.circmean(b_['ft_heading'], low=theta_range[0], high=theta_range[1]),
+        'rel_time': b_['rel_time'].iloc[0]
+    }
+    for heading_var in heading_vars:
+        if heading_var in b_.columns:
+            k = 'average_{}'.format(heading_var)
+            v = sts.circmean(b_['ft_heading'], low=theta_range[0], high=theta_range[1])
+            mdict.update({k: v})
+    misc = pd.Series(mdict)
+
+#    misc = pd.Series({
+#        'duration': df_['time'].iloc[-1] - df_['time'].iloc[0],
+#        'upwind_dist_range': df_['ft_posy'].max() - df_['ft_posy'].min(),
+#        'upwind_dist_firstlast': df_['ft_posy'].iloc[-1] - df_['ft_posy'].iloc[0],
+#        'crosswind_dist_range': df_['ft_posx'].max() - df_['ft_posx'].min(),
+#        'crosswind_dist_firstlast': df_['ft_posx'].iloc[-1] - df_['ft_posx'].iloc[0],
+#        'path_length': df_['euclid_dist'].sum() -  df_['euclid_dist'].iloc[0],
+#        'average_heading': sts.circmean(df_['ft_heading'], low=theta_range[0], high=theta_range[1]),
+#        'rel_time': df_['rel_time'].iloc[0]
+#    }) #, index=[0])
+#    
     #metrics = pd.DataFrame(pd.concat([misc, lin_metrics, single_metrics])).T    
     metrics = pd.concat([misc, lin_metrics, single_metrics]) 
     return metrics
@@ -2583,4 +2668,47 @@ def check_mfc_vars(df0_all, file_id='filename'):
     pl.subplots_adjust(top=0.9)
 
     return g.fig
+
+
+
+
+
+def draw_line(ax, x,y,angle,length, lc='w', lw=1, label=None, alpha=0.7):
+    #  coordinates of '+x', '+y', '-x ', '-y' are 90, 0, 270, 180 degrees, respectively
+    # standard cartesian: (0, 90, 180, 270) -> (+x, +y, -x, -y)
+    # 360-a to flip, then -90 again to shift 0 from +y to +x
+
+    deg = np.rad2deg(angle)
+    cartesianAngleRadians = (450-deg)*np.pi/180.0
+    #cartesianAngleRadians = angle
+    terminus_x = x + length * np.cos(cartesianAngleRadians)
+    terminus_y = y + length * np.sin(cartesianAngleRadians)
+    ax.plot([x, terminus_x],[y,terminus_y], color=lc, lw=lw, label=label, alpha=alpha)
+    #print [x, terminus_x],[y,terminus_y]
+    
+def overlay_angles_on_path(ax, currbout, subsample=True, nth=None, lw=1,
+                        varnames = ['offset_eb_phase', 'offset_fb_phase_upper'],
+                        colors = ['cyan', 'magenta'], scales=[1, 1], alpha=0.7):
+    if isinstance(scales, (int, float)):
+        scales = [scales]*len(currbout)
+    nth = int(np.floor( currbout.shape[0] /100))
+    b_ = currbout.iloc[0::nth] if nth>=1 else currbout.copy()
+    ax.plot( b_['ft_posx'], b_['ft_posy'], color='w', lw=0.25)
+    if len(colors) == len(varnames):
+        for var, scale, col in zip(varnames, scales, colors):
+            if isinstance(scale, str):
+                for i, (x, y, a, l) in b_[['ft_posx', 'ft_posy', var, scale]].iterrows():
+                    draw_line(ax, x, y, a, l*3, lc=col, alpha=alpha, lw=lw)
+            else:
+                for i, (x, y, a) in b_[['ft_posx', 'ft_posy', var]].iterrows():
+                    draw_line(ax, x, y, a, scale, lc=col, alpha=alpha, lw=lw)
+    elif len(colors) == len(currbout):
+        for var, scale in zip(varnames, scales):
+            if isinstance(scale, str):
+                for col, (i, (x, y, a, l)) in zip(colors, b_[['ft_posx', 'ft_posy', var, scale]].iterrows()):
+                    draw_line(ax, x, y, a, l*3, lc=col, alpha=alpha, lw=lw)
+            else:
+                for col, (i, (x, y, a)) in zip(colors, b_[['ft_posx', 'ft_posy', var]].iterrows()):
+                    draw_line(ax, x, y, a, scale, lc=col, alpha=alpha, lw=lw)    
+    return ax
 
