@@ -1943,7 +1943,8 @@ def plot_bout(b_, ax, xvar='ft_posx', yvar='ft_posy', hue_var='time',
     return ax
 
 def add_colored_lines(b_, ax, xvar='ft_posx', yvar='ft_posy', 
-                    hue_var='heading', cmap='hsv', norm=None):
+                    hue_var='heading', cmap='hsv', norm=None,
+                    lw=1, alpha=1):
     '''
     Plot lines between x, y points in bout, b_, with specified colors.
 
@@ -1969,7 +1970,8 @@ def add_colored_lines(b_, ax, xvar='ft_posx', yvar='ft_posy',
     huev = b_[hue_var].values
     #print(huev.dtype)
     segments = np.hstack([xy[:-1], xy[1:]])
-    coll = mpl.collections.LineCollection(segments, cmap=cmap, norm=norm) #plt.cm.gist_ncar)
+    coll = mpl.collections.LineCollection(segments, cmap=cmap, norm=norm,
+                                lw=lw, alpha=alpha) #plt.cm.gist_ncar)
     coll.set_array(huev) #np.random.random(xy.shape[0]))
     ax.add_collection(coll)
     return ax
