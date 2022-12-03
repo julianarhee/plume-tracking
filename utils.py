@@ -69,6 +69,17 @@ def make_ordinal(n):
         suffix = 'th'
     return str(n) + suffix
 
+def convert_range(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
+    if oldmax is None: #and len(oldval)>1:
+        oldmax = np.nanmax(oldval)
+    if oldmin is None: # and len(oldval)>1:
+        oldmin = np.nanmin(oldval)
+
+    oldrange = (oldmax - oldmin)
+    newrange = (newmax - newmin)
+    newval = (((oldval - oldmin) * newrange) / oldrange) + newmin
+    return newval
+
 
 # ----------------------------------------------------------------------
 # Calculation
