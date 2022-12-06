@@ -1293,7 +1293,7 @@ def find_odor_grid(df, strip_width=10, strip_sep=200, plot=True):
     # where is the fly outside of current odor boundary but still instrip:
     # nextgrid_df = indf[ (indf['ft_posx']>(curr_odor_xmax.round(2)+strip_sep*0.5) | ((indf['ft_posx']<curr_odor_xmin.round(2)-strip_sep*0.5))].copy()
     nextgrid_df = indf[ (indf['ft_posx']>np.ceil(curr_odor_xmax)+strip_sep*0.5) \
-                   | ((indf['ft_posx']<np.floor(curr_odor_xmin)-strip_sep*0.5)) ].copy()
+                   | ((indf['ft_posx']<np.floor(curr_odor_xmin)-strip_sep*1.5)) ].copy()
     # loop through the remainder of odor strips in experiment until all strips found
     while nextgrid_df.shape[0] > 0:
         # get odor params of next corridor
@@ -2373,6 +2373,16 @@ def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, strip_sep=
     pl.subplots_adjust(left=0.1, wspace=0.5, top=0.8, right=0.85, bottom=0.2)
     return fig
 
+
+def zero_start_position(b_):
+    b_['ft_posx_start0'] = b_['ft_posx'] - b_['ft_posx'].iloc[0]
+    b_['ft_posy_start0'] = b_['ft_posy'] - b_['ft_posy'].iloc[0]
+    return b_
+
+def normalize_position(b_):
+    b_['ft_posx_norm'] = util.convert_range(b_['ft_posx_start0'], newmin=0, newmax=1)
+    b_['ft_posy_norm'] = util.convert_range(b_['ft_posy_start0'], newmin=0, newmax=1)
+    return b_
 
 
 # ----------------------------------------------------------------------
