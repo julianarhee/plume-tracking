@@ -23,7 +23,7 @@ from google.auth.transport.requests import Request
 
 import pandas as pd
 
-def gsheet_api_check(SCOPES, parent_dir = '/Users/julianarhee/Repositories/edge-tracking'):
+def gsheet_api_check(SCOPES, parent_dir='/Users/julianarhee/Repositories/edge-tracking'):
     #print(os.listdir(parent_dir))
     creds = None
     if os.path.exists(os.path.join(parent_dir, 'token.pickle')):
