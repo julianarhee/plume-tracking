@@ -55,14 +55,15 @@ def get_log_files(src_dir=None, experiment=None, verbose=False, is_gdrive=False,
         _description_
     '''
     if is_gdrive:
-        # connect to google drive and get info from sheet
-        assert os.path.split(rootdir)[-1]=='Analysis', 'For G-drive, rootdir should be /Edge_Tracking/Aanalysis. Current rootdir is: {}{{}'.format('\n', rootdir)
+        try:
+            # connect to google drive and get info from sheet
+            assert os.path.split(rootdir)[-1]=='Analysis', 'For G-drive, rootdir should be /Edge_Tracking/Aanalysis. Current rootdir is: {}{}'.format('\n', rootdir)
+        except AssertionError:
+            if os.path.split(rootdir)[-1]=='Data':
+                rootdir = os.path.join(os.path.split(rootdir)[0], 'Analysis')
+
         logdf = gdrive.get_info_from_gsheet(experiment)
-#        if 'degree' in experiment: # specific to 'degree' experiments
-#            exp_key = experiment.split('-degree')[0]
-#        else:
-#            exp_key = experiment
-#        #curr_logs = logdf[logdf['experiment']==exp_key].copy()
+
         if os.path.exists(os.path.join(rootdir, experiment, 'logs')):
             logdir = os.path.join(rootdir, experiment, 'logs')
         else:
@@ -150,7 +151,6 @@ def parse_info_from_filename(fpath, experiment=None,
         condition = condition.lower()
     if fly_id is not None:
         fly_id = fly_id.lower()
-
 
     return experiment, date_str, fly_id, condition
 
@@ -420,7 +420,9 @@ def correct_manual_conditions(df, experiment, logdf=None):
         elif 'degree' in experiment:
             df['condition'] = experiment 
             #df.loc[df['condition']!='cantons_constantodor', 'condition'] = 'cantons_constantodor'  
-        df['genotype'] = ''
+
+        #df['genotype'] = ''
+
     return df
 
 def load_combined_df(src_dir=None, log_files=None, logdf=None, is_csv=False, 
@@ -503,7 +505,8 @@ def load_combined_df(src_dir=None, log_files=None, logdf=None, is_csv=False,
             dlist.append(df_)
         df = pd.concat(dlist, axis=0)
         # get experiment name
-        experiment = src_dir.split('{}/'.format(rootdir))[-1]
+        if experiment is None:
+            experiment = src_dir.split('{}/'.format(rootdir))[-1]
         df = correct_manual_conditions(df, experiment, logdf=logdf)
         # do some processing, like distance and speed calculations
         if process:
