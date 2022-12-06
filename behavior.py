@@ -896,7 +896,18 @@ def to_unit_vector(pitch, yaw, roll):
     return x, y, z
 
 import math 
+
 def angle_between(a, b):
+    '''
+    uvecs = [butil.to_unit_vector(p, y, r) for i, (p, y, r) \
+                    in df[['df_pitch', 'df_yaw', 'df_roll']].iterrows()]
+    uvecs = pd.DataFrame(uvecs, columns=['x', 'y', 'z'])
+
+    angs = np.array([butil.angle_between(a.values, b.values) \
+             for (i, a), (j, b) in zip(uvecs.iterrows(), uvecs.shift(-1).iterrows())])
+    angs = np.roll(angs, 1)
+
+    '''
     # returns angle in degrees
     return math.atan2( np.sqrt( np.dot( np.cross(a, b), np.cross(a, b))), np.dot(a, b))
 
@@ -2250,7 +2261,7 @@ def mean_dir_after_stop(df, heading_var='ft_heading',theta_range=(-np.pi, np.pi)
 
 
 def get_bout_metrics(df_, heading_vars=['ft_heading', 'heading'],
-                    group_vars=['fly_id', 'condition', 'boutnum'],
+                    group_vars=['fly_id', 'condition', 'boutnum', 'trial_id'],
                     theta_range=(-np.pi, np.pi)):
     '''
     Calculate metrics for 1 bout. 
@@ -2283,13 +2294,13 @@ def get_bout_metrics(df_, heading_vars=['ft_heading', 'heading'],
         'crosswind_dist_range': b_['ft_posx'].max() - b_['ft_posx'].min(),
         'crosswind_dist_firstlast': b_['ft_posx'].iloc[-1] - b_['ft_posx'].iloc[0],
         'path_length': b_['euclid_dist'].sum() -  b_['euclid_dist'].iloc[0],
-        'average_heading': sts.circmean(b_['ft_heading'], low=theta_range[0], high=theta_range[1]),
+        #'average_heading': sts.circmean(b_['ft_heading'], low=theta_range[0], high=theta_range[1]),
         'rel_time': b_['rel_time'].iloc[0]
     }
     for heading_var in heading_vars:
         if heading_var in b_.columns:
             k = 'average_{}'.format(heading_var)
-            v = sts.circmean(b_['ft_heading'], low=theta_range[0], high=theta_range[1])
+            v = sts.circmean(b_[heading_var], low=theta_range[0], high=theta_range[1])
             mdict.update({k: v})
     misc = pd.Series(mdict)
 
@@ -2305,7 +2316,7 @@ def get_bout_metrics(df_, heading_vars=['ft_heading', 'heading'],
 #    }) #, index=[0])
 #    
     #metrics = pd.DataFrame(pd.concat([misc, lin_metrics, single_metrics])).T    
-    metrics = pd.concat([misc, lin_metrics, single_metrics]) 
+    metrics = pd.concat([misc, lin_metrics, single_metrics]).T
     return metrics
 
 def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, strip_sep=200, 
