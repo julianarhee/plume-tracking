@@ -22,4 +22,7 @@ dependencies:
   - astropy
   - plotly
   - rdp
+  - tifffile
+  - xmltodict
+  - requests
 prefix: /Users/julianarhee/miniforge3/envs/plume

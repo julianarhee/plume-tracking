@@ -55,14 +55,15 @@ def get_log_files(src_dir=None, experiment=None, verbose=False, is_gdrive=False,
         _description_
     '''
     if is_gdrive:
-        # connect to google drive and get info from sheet
-        assert os.path.split(rootdir)[-1]=='Analysis', 'For G-drive, rootdir should be /Edge_Tracking/Aanalysis. Current rootdir is: {}{{}'.format('\n', rootdir)
+        try:
+            # connect to google drive and get info from sheet
+            assert os.path.split(rootdir)[-1]=='Analysis', 'For G-drive, rootdir should be /Edge_Tracking/Aanalysis. Current rootdir is: {}{}'.format('\n', rootdir)
+        except AssertionError:
+            if os.path.split(rootdir)[-1]=='Data':
+                rootdir = os.path.join(os.path.split(rootdir)[0], 'Analysis')
+
         logdf = gdrive.get_info_from_gsheet(experiment)
-#        if 'degree' in experiment: # specific to 'degree' experiments
-#            exp_key = experiment.split('-degree')[0]
-#        else:
-#            exp_key = experiment
-#        #curr_logs = logdf[logdf['experiment']==exp_key].copy()
+
         if os.path.exists(os.path.join(rootdir, experiment, 'logs')):
             logdir = os.path.join(rootdir, experiment, 'logs')
         else:
@@ -150,7 +151,6 @@ def parse_info_from_filename(fpath, experiment=None,
         condition = condition.lower()
     if fly_id is not None:
         fly_id = fly_id.lower()
-
 
     return experiment, date_str, fly_id, condition
 
@@ -420,7 +420,9 @@ def correct_manual_conditions(df, experiment, logdf=None):
         elif 'degree' in experiment:
             df['condition'] = experiment 
             #df.loc[df['condition']!='cantons_constantodor', 'condition'] = 'cantons_constantodor'  
-        df['genotype'] = ''
+
+        #df['genotype'] = ''
+
     return df
 
 def load_combined_df(src_dir=None, log_files=None, logdf=None, is_csv=False, 
@@ -503,7 +505,8 @@ def load_combined_df(src_dir=None, log_files=None, logdf=None, is_csv=False,
             dlist.append(df_)
         df = pd.concat(dlist, axis=0)
         # get experiment name
-        experiment = src_dir.split('{}/'.format(rootdir))[-1]
+        if experiment is None:
+            experiment = src_dir.split('{}/'.format(rootdir))[-1]
         df = correct_manual_conditions(df, experiment, logdf=logdf)
         # do some processing, like distance and speed calculations
         if process:
@@ -1290,7 +1293,7 @@ def find_odor_grid(df, strip_width=10, strip_sep=200, plot=True):
     # where is the fly outside of current odor boundary but still instrip:
     # nextgrid_df = indf[ (indf['ft_posx']>(curr_odor_xmax.round(2)+strip_sep*0.5) | ((indf['ft_posx']<curr_odor_xmin.round(2)-strip_sep*0.5))].copy()
     nextgrid_df = indf[ (indf['ft_posx']>np.ceil(curr_odor_xmax)+strip_sep*0.5) \
-                   | ((indf['ft_posx']<np.floor(curr_odor_xmin)-strip_sep*0.5)) ].copy()
+                   | ((indf['ft_posx']<np.floor(curr_odor_xmin)-strip_sep*1.5)) ].copy()
     # loop through the remainder of odor strips in experiment until all strips found
     while nextgrid_df.shape[0] > 0:
         # get odor params of next corridor
@@ -2260,7 +2263,7 @@ def mean_dir_after_stop(df, heading_var='ft_heading',theta_range=(-np.pi, np.pi)
     return meandirs
 
 
-def get_bout_metrics(df_, heading_vars=['ft_heading', 'heading'],
+def get_bout_metrics(b_, heading_vars=['ft_heading', 'heading'],
                     group_vars=['fly_id', 'condition', 'boutnum', 'trial_id'],
                     theta_range=(-np.pi, np.pi)):
     '''
@@ -2278,8 +2281,9 @@ def get_bout_metrics(df_, heading_vars=['ft_heading', 'heading'],
     Returns:
         _description_
     '''
-    b_ = df_.dropna()
-    io_vars = ['led1_stpt', 'led2_stpt', 'mfc1_stpt', 'mfc2_stpt', 'mfc3_stpt']
+    #b_ = df_.dropna()
+    io_vars = ['led1_stpt', 'led2_stpt', 'mfc1_stpt', 'mfc2_stpt', 'mfc3_stpt',\
+               'motor_step_command']
     single_vals = [i for i in b_.columns if len(b_[i].unique())==1\
                   and i not in group_vars and i not in io_vars]
     single_metrics = b_[single_vals].drop_duplicates().reset_index(drop=True).squeeze()
@@ -2295,7 +2299,8 @@ def get_bout_metrics(df_, heading_vars=['ft_heading', 'heading'],
         'crosswind_dist_firstlast': b_['ft_posx'].iloc[-1] - b_['ft_posx'].iloc[0],
         'path_length': b_['euclid_dist'].sum() -  b_['euclid_dist'].iloc[0],
         #'average_heading': sts.circmean(b_['ft_heading'], low=theta_range[0], high=theta_range[1]),
-        'rel_time': b_['rel_time'].iloc[0]
+        'rel_time': b_['rel_time'].iloc[0],
+        'n_frames': len(b_['ft_frame'].unique())
     }
     for heading_var in heading_vars:
         if heading_var in b_.columns:
@@ -2370,6 +2375,16 @@ def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, strip_sep=
     pl.subplots_adjust(left=0.1, wspace=0.5, top=0.8, right=0.85, bottom=0.2)
     return fig
 
+
+def zero_start_position(b_):
+    b_['ft_posx_start0'] = b_['ft_posx'] - b_['ft_posx'].iloc[0]
+    b_['ft_posy_start0'] = b_['ft_posy'] - b_['ft_posy'].iloc[0]
+    return b_
+
+def normalize_position(b_):
+    b_['ft_posx_norm'] = util.convert_range(b_['ft_posx_start0'], newmin=0, newmax=1)
+    b_['ft_posy_norm'] = util.convert_range(b_['ft_posy_start0'], newmin=0, newmax=1)
+    return b_
 
 
 # ----------------------------------------------------------------------
