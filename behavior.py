@@ -2263,7 +2263,7 @@ def mean_dir_after_stop(df, heading_var='ft_heading',theta_range=(-np.pi, np.pi)
     return meandirs
 
 
-def get_bout_metrics(df_, heading_vars=['ft_heading', 'heading'],
+def get_bout_metrics(b_, heading_vars=['ft_heading', 'heading'],
                     group_vars=['fly_id', 'condition', 'boutnum', 'trial_id'],
                     theta_range=(-np.pi, np.pi)):
     '''
@@ -2281,8 +2281,9 @@ def get_bout_metrics(df_, heading_vars=['ft_heading', 'heading'],
     Returns:
         _description_
     '''
-    b_ = df_.dropna()
-    io_vars = ['led1_stpt', 'led2_stpt', 'mfc1_stpt', 'mfc2_stpt', 'mfc3_stpt']
+    #b_ = df_.dropna()
+    io_vars = ['led1_stpt', 'led2_stpt', 'mfc1_stpt', 'mfc2_stpt', 'mfc3_stpt',\
+               'motor_step_command']
     single_vals = [i for i in b_.columns if len(b_[i].unique())==1\
                   and i not in group_vars and i not in io_vars]
     single_metrics = b_[single_vals].drop_duplicates().reset_index(drop=True).squeeze()
@@ -2298,7 +2299,8 @@ def get_bout_metrics(df_, heading_vars=['ft_heading', 'heading'],
         'crosswind_dist_firstlast': b_['ft_posx'].iloc[-1] - b_['ft_posx'].iloc[0],
         'path_length': b_['euclid_dist'].sum() -  b_['euclid_dist'].iloc[0],
         #'average_heading': sts.circmean(b_['ft_heading'], low=theta_range[0], high=theta_range[1]),
-        'rel_time': b_['rel_time'].iloc[0]
+        'rel_time': b_['rel_time'].iloc[0],
+        'n_frames': len(b_['ft_frame'].unique())
     }
     for heading_var in heading_vars:
         if heading_var in b_.columns:
