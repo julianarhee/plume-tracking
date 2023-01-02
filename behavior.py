@@ -2378,7 +2378,7 @@ def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, strip_sep=
 
 def plot_trajectory_from_file(fpath, parse_filename=False, strip_width=10, strip_sep=200, ax=None):
     # load and process the csv data  
-    df0 = load_dataframe(fpath, verbose=False, cond=None, 
+    df0 = load_dataframe(fpath, verbose=False, #cond=None, 
                 parse_filename=False)
     fly_id=None
     if parse_filename:
@@ -2395,6 +2395,7 @@ def plot_trajectory_from_file(fpath, parse_filename=False, strip_width=10, strip
     #                        strip_sep=strip_sep, use_crossings=True, verbose=False )
     #(odor_xmin, odor_xmax), = ogrid.values()
     #odor_bounds = list(ogrid.values())
+    df0 = process_df(df0)
     strip_borders = find_strip_borders(df0, strip_width=strip_width, strip_sep=strip_sep, 
                                 entry_ix=None)
     title = os.path.splitext(os.path.split(fpath)[-1])[0]
