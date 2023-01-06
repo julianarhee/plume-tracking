@@ -69,8 +69,16 @@ def main():
         help='odor width, mm (default: 10)')
     parser.add_argument('-s', '--strip_sep', type=float, default=200,
         help='grid separation, mm (default: 200)')
-    parser.add_argument('-v', '--verbose', type=bool, default=False,
-        help='verbose, print all statements')
+    parser.add_argument('-v', '--verbose', default=False,
+        action='store_true', help='verbose, print all statements')
+    parser.add_argument('-O', '--start_at_odor', default=False,
+        action='store_true', help='plot from odor onset')
+    parser.add_argument('-z', '--zero_odor_start', default=False,
+        action='store_true', help='zero is odor onset')
+    parser.add_argument('-S', '--save', default=False,
+        action='store_true', help='save to tmp folder')
+    parser.add_argument('-m', '--markersize', default=0.5, type=float,
+        action='store', help='markersize (default=0.5)')
 
     args = parser.parse_args()
     rootdir = args.rootdir
@@ -81,20 +89,34 @@ def main():
     strip_sep = args.strip_sep
     user_input = False
     parse_filename = False
+    
+    start_at_odor = args.start_at_odor
+    zero_odor_start = args.zero_odor_start
+    save = args.save
+    markersize = args.markersize
 
     fpath = select_logfile(experiment, datestr, user_input=user_input, rootdir=rootdir)
     fig, ax = pl.subplots()
     butil.plot_trajectory_from_file(fpath, parse_filename=parse_filename, 
-                strip_width=strip_width, strip_sep=strip_sep, ax=ax)
+                strip_width=strip_width, strip_sep=strip_sep, ax=ax,
+                start_at_odor=start_at_odor, zero_odor_start=zero_odor_start,
+                markersize=markersize)
 
+    ax.set_box_aspect(2.0)
     # label figure and save
     fig_id = '{}: {}'.format(experiment, datestr)
     util.label_figure(fig, fig_id)
 
-    pl.show()
+    if save:
+        save_dir = os.path.join(rootdir, 'figures')
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        _, fbase = os.path.split(fpath)
+        figname = '{}.png'.format(os.path.splitext(fbase)[0])
+        pl.savefig(os.path.join(save_dir, figname)) #, dpi=dpi)
+        print("saved: {}".format(os.path.join(save_dir, figname)))
 
-    #pl.savefig(os.path.join(save_dir, '{}.png'.format(figname))) #, dpi=dpi)
-    #print(os.path.join(save_dir, '{}.png'.format(figname)))
+    pl.show()
 
 #%%
 if __name__ == '__main__':
