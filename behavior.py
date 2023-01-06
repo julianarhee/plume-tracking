@@ -806,7 +806,7 @@ def find_crossovers(df_, strip_width=50):
 # ---------------------------------------------------------------------- 
 # Data processing
 # ----------------------------------------------------------------------
-def process_df(df, xvar='ft_posx', yvar='ft_posy', 
+def process_df(df, xvar='ft_posx', yvar='ft_posy', fliplr=True,
                 bout_thresh=0.5, switch_method='previous',
                 smooth=False, window_size=11, verbose=False):
     '''
@@ -832,6 +832,17 @@ def process_df(df, xvar='ft_posx', yvar='ft_posy',
     for trial_id, df_ in df.groupby('trial_id'):
         if verbose:
             print("... processing {}".format(trial_id))
+
+        if fliplr:
+            # FLIP L/R 
+            xp, yp = util.fliplr_coordinates(df_['ft_posx'].values, \
+                                             df_['ft_posy'].values)
+            df[df['trial_id']==trial_id].loc[df_.index, 'ft_posx'] = xp
+            df[df['trial_id']==trial_id].loc[df_.index, 'ft_posy'] = yp
+
+            hp = -1*df_['ft_heading'].values
+            df[df['trial_id']==trial_id].loc[df_.index, 'ft_heading'] = hp
+
         # parse in and out bouts
         df_ = parse_bouts(df_, count_varname='instrip', bout_varname='boutnum') # 1-count
         # filter in and out bouts by min. duration 
@@ -844,10 +855,10 @@ def process_df(df, xvar='ft_posx', yvar='ft_posy',
         # smooth?
         if smooth:
             df_ = smooth_traces(df_, window_size=window_size, return_same=True)
+        df['bout_type'] = 'outstrip'
+        df.loc[df['instrip'], 'bout_type'] = 'instrip' 
         dlist.append(df_)
     DF=pd.concat(dlist, axis=0) # dont reset index
-    DF['bout_type'] = 'outstrip'
-    DF.loc[DF['instrip'], 'bout_type'] = 'instrip'
 
     return DF
 
@@ -2391,7 +2402,9 @@ def normalize_position(b_):
 # Visualization
 # ----------------------------------------------------------------------
 
-def plot_trajectory_from_file(fpath, parse_filename=False, strip_width=10, strip_sep=200, ax=None):
+def plot_trajectory_from_file(fpath, parse_filename=False, 
+            strip_width=10, strip_sep=200, ax=None, 
+            zero_odor_start=False, start_at_odor=False, markersize=0.5):
     # load and process the csv data  
     df0 = load_dataframe(fpath, verbose=False, #cond=None, 
                 parse_filename=False)
@@ -2414,33 +2427,60 @@ def plot_trajectory_from_file(fpath, parse_filename=False, strip_width=10, strip
     strip_borders = find_strip_borders(df0, strip_width=strip_width, strip_sep=strip_sep, 
                                 entry_ix=None)
     title = os.path.splitext(os.path.split(fpath)[-1])[0]
-    plot_trajectory(df0, odor_bounds=strip_borders, title=title, ax=ax)
+    plot_trajectory(df0, odor_bounds=strip_borders, title=title, ax=ax,
+            start_at_odor=start_at_odor, zero_odor_start=zero_odor_start,
+            markersize=markersize)
 
     return ax
 
 def plot_trajectory(df0, odor_bounds=[], ax=None,
         xvar='ft_posx', yvar='ft_posy',
         hue_varname='instrip', palette={True: 'r', False: 'w'}, hue_norm=None,
-        start_at_odor = True, odor_lc='lightgray', odor_lw=0.5, title='',
+        start_at_odor = False, zero_odor_start = False, 
+        odor_lc='lightgray', odor_lw=0.5, title='',
         markersize=0.5, alpha=1.0, 
-        center=False, xlim=200, plot_odor_onset=True, plot_legend=True):
+        center=False, xlim=200, plot_legend=True, plot_start=True):
 
     # ---------------------------------------------------------------------
     if ax is None: 
         fig, ax = pl.subplots()
     if not isinstance(odor_bounds, list):
         odor_bounds = [odor_bounds]
-    sns.scatterplot(data=df0, x=xvar, y=yvar, ax=ax, 
-                    hue=hue_varname, s=markersize, edgecolor='none', palette=palette,
-                    legend=plot_legend, alpha=alpha)
+    if start_at_odor:
+        start_ix = df0[df0['instrip']].iloc[0].name
+    else:
+        start_ix = df0.iloc[0].name
+
+    df = df0.loc[start_ix:].copy()
+    
+    if zero_odor_start:
+        print("...zeroing to odor start")
+        odor_start_x = float(df[df['instrip']].iloc[0]['ft_posx'])
+        odor_start_y = float(df[df['instrip']].iloc[0]['ft_posy'])
+        print("Subtracting: {:.2f}, {:.2f}".format(odor_start_x, odor_start_y))
+        new_x = df['ft_posx'].values - odor_start_x
+        new_y = df['ft_posy'].values - odor_start_y
+        df['ft_posx'] = new_x 
+        df['ft_posy'] = new_y 
+        for i, (om, oM) in enumerate(odor_bounds):
+           odor_bounds[i] = (om - odor_start_x, oM - odor_start_x)
+    # plot trajectory
+    sns.scatterplot(data=df, x=xvar, y=yvar, ax=ax, 
+            hue=hue_varname, s=markersize, edgecolor='none', palette=palette,
+            legend=plot_legend, alpha=alpha)
+
     # odor corridor
     for (odor_xmin, odor_xmax) in odor_bounds:
         plot_odor_corridor(ax, odor_xmin=odor_xmin, odor_xmax=odor_xmax)
     # odor start time
-    if df0[df0['instrip']].shape[0]>0:
-        odor_start_ix = df0[df0['instrip']].iloc[0][yvar]
-        if plot_odor_onset:
+    if df[df['instrip']].shape[0]>0:
+        odor_start_ix = df[df['instrip']].iloc[0][yvar]
+        if start_at_odor:
             ax.axhline(y=odor_start_ix, color='w', lw=0.5, linestyle=':')
+    # trial start
+    if plot_start:
+        ax.plot(df.loc[start_ix]['ft_posx'], df.loc[start_ix]['ft_posy'], 'g*')
+        ax.plot(df.iloc[-1]['ft_posx'], df.iloc[-1]['ft_posy'], 'b*') 
     ax.legend(bbox_to_anchor=(1,1), loc='upper left', title=hue_varname, frameon=False)
     ax.set_title(title)
     xmax=500
@@ -2449,8 +2489,8 @@ def plot_trajectory(df0, odor_bounds=[], ax=None,
     else:
         try:
             # Center corridor   
-            xmin = np.floor(df0[xvar].min())
-            xmax = np.ceil(df0[xvar].max())
+            xmin = np.floor(df[xvar].min())
+            xmax = np.ceil(df[xvar].max())
             ax.set_xlim([xmin-20, xmax+20])
         except ValueError as e:
             xmax = 500
