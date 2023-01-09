@@ -422,6 +422,11 @@ def correct_manual_conditions(df, experiment, logdf=None):
         elif 'degree' in experiment:
             df['condition'] = experiment 
             #df.loc[df['condition']!='cantons_constantodor', 'condition'] = 'cantons_constantodor'  
+        
+        elif experiment=='PAM_activation_fed-flies':
+            df.loc[df['condition']=='fed_no_lights', 'condition'] = 'pamchr_fed_no_lights'
+            df.loc[df['condition']=='fed_single', 'condition'] = 'pamchr_fed_single'
+            df.loc[df['condition']=='fed_lights', 'condition'] = 'pamchr_fed_lights'
 
         #df['genotype'] = ''
 
