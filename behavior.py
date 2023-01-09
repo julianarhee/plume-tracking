@@ -2578,7 +2578,8 @@ def plot_all_flies(df_, hue_varname='instrip',  plot_borders=True,
     return g.fig
 
 def plot_fly_by_condition(plotdf, strip_width=50, hue_varname='instrip', 
-                            palette={True: 'r', False: 'w'}):
+                            palette={True: 'r', False: 'w'},
+                            row_order=None, col_order=None):
     '''
     create facet grid of fly (cols) by condition (rows)
 
@@ -2593,9 +2594,13 @@ def plot_fly_by_condition(plotdf, strip_width=50, hue_varname='instrip',
     Returns:
         _description_
     '''
+    if row_order is None:
+        row_order = list(plotdf.groupby('condition').groups.keys())
+    if col_order is None:
+        col_order = list(plotdf.groupby('fly_id').groups.keys())
+
     g = sns.FacetGrid(plotdf, col='fly_id', row='condition', 
-                    col_order=list(plotdf.groupby('fly_id').groups.keys()),
-                    row_order = list(plotdf.groupby('condition').groups.keys()))
+                    col_order= col_order, row_order = row_order)
 
     g.map_dataframe(sns.scatterplot, x="ft_posx", y="ft_posy", hue=hue_varname,
                 s=0.5, edgecolor='none', palette=palette) #, palette=palette)
