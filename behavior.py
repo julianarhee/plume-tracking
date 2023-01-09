@@ -134,16 +134,18 @@ def parse_info_from_filename(fpath, experiment=None,
     if 'fly' in info_str.lower():
         # assumes: nameofexperiment/maybestuff/FlyID
         if experiment is None:
-            experiment = exp_cond_str.lower().split('/{}'.format('fly'))[0] #\
-                    #if "Fly" in exp_cond_str else exp_cond_str.split('/{}'.format('fly'))[0]
+            experiment = exp_cond_str.lower().split('/{}'.format('fly'))[0] 
         # get fly_id
-        fly_id = re.search('fly\d{1,3}[a-zA-Z]?', info_str, re.IGNORECASE)[0] # exp_cond_str
+        fly_id = re.search('fly\d{1,3}[a-zA-Z]?', info_str, re.IGNORECASE)[0] 
+    elif 'fly' in log_fname.lower():
+        fly_id = re.search('fly\d{1,3}[a-zA-Z]?', log_fname, re.IGNORECASE)[0]
     else:
         if experiment is None:
             experiment = exp_cond_str # fly ID likely in LOG filename
 
     if fly_id is None:
-        fly_id = 'fly{}'.format(date_str.split('-')[-1]) # use timestamp for unique fly id for current date
+        # use timestamp for unique fly id for current date
+        fly_id = 'fly{}'.format(date_str.split('-')[-1]) 
 
     condition = '_'.join([c for c in cond_str.split('_') if fly_id not in c \
                     and not re.search('\d{3}', c)])
