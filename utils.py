@@ -10,12 +10,26 @@
 #%%
 import os
 import re
+import platform
 import seaborn as sns
 import numpy as np
 import matplotlib as mpl
 import pylab as pl
 
 # General
+def get_os():
+    return platform.system()
+
+def get_rootdir():
+    if get_os() == 'Linux':
+        rootdir = '/home/julianarhee/edgetracking-googledrive/Edge_Tracking/Data'
+    elif get_os() == 'Darwin':
+        rootdir = '/home/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'
+    else:
+        rootdir=None
+        print("Unknown os: {}".format(get_os()))
+    return rootdir    
+
 # Abstract struct class
 class DictStruct:
     def __init__ (self, *argv, **argd):
