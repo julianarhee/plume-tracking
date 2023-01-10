@@ -134,16 +134,18 @@ def parse_info_from_filename(fpath, experiment=None,
     if 'fly' in info_str.lower():
         # assumes: nameofexperiment/maybestuff/FlyID
         if experiment is None:
-            experiment = exp_cond_str.lower().split('/{}'.format('fly'))[0] #\
-                    #if "Fly" in exp_cond_str else exp_cond_str.split('/{}'.format('fly'))[0]
+            experiment = exp_cond_str.lower().split('/{}'.format('fly'))[0] 
         # get fly_id
-        fly_id = re.search('fly\d{1,3}[a-zA-Z]?', info_str, re.IGNORECASE)[0] # exp_cond_str
+        fly_id = re.search('fly\d{1,3}[a-zA-Z]?', info_str, re.IGNORECASE)[0] 
+    elif 'fly' in log_fname.lower():
+        fly_id = re.search('fly\d{1,3}[a-zA-Z]?', log_fname, re.IGNORECASE)[0]
     else:
         if experiment is None:
             experiment = exp_cond_str # fly ID likely in LOG filename
 
     if fly_id is None:
-        fly_id = 'fly{}'.format(date_str.split('-')[-1]) # use timestamp for unique fly id for current date
+        # use timestamp for unique fly id for current date
+        fly_id = 'fly{}'.format(date_str.split('-')[-1]) 
 
     condition = '_'.join([c for c in cond_str.split('_') if fly_id not in c \
                     and not re.search('\d{3}', c)])
@@ -420,6 +422,11 @@ def correct_manual_conditions(df, experiment, logdf=None):
         elif 'degree' in experiment:
             df['condition'] = experiment 
             #df.loc[df['condition']!='cantons_constantodor', 'condition'] = 'cantons_constantodor'  
+        
+        elif experiment=='PAM_activation_fed-flies':
+            df.loc[df['condition']=='fed_no_lights', 'condition'] = 'pamchr_fed_no_lights'
+            df.loc[df['condition']=='fed_single', 'condition'] = 'pamchr_fed_single'
+            df.loc[df['condition']=='fed_lights', 'condition'] = 'pamchr_fed_lights'
 
         #df['genotype'] = ''
 
@@ -2611,7 +2618,8 @@ def plot_all_flies(df_, hue_varname='instrip',  plot_borders=True,
     return g.fig
 
 def plot_fly_by_condition(plotdf, strip_width=50, hue_varname='instrip', 
-                            palette={True: 'r', False: 'w'}):
+                            palette={True: 'r', False: 'w'},
+                            row_order=None, col_order=None):
     '''
     create facet grid of fly (cols) by condition (rows)
 
@@ -2626,9 +2634,13 @@ def plot_fly_by_condition(plotdf, strip_width=50, hue_varname='instrip',
     Returns:
         _description_
     '''
+    if row_order is None:
+        row_order = list(plotdf.groupby('condition').groups.keys())
+    if col_order is None:
+        col_order = list(plotdf.groupby('fly_id').groups.keys())
+
     g = sns.FacetGrid(plotdf, col='fly_id', row='condition', 
-                    col_order=list(plotdf.groupby('fly_id').groups.keys()),
-                    row_order = list(plotdf.groupby('condition').groups.keys()))
+                    col_order= col_order, row_order = row_order)
 
     g.map_dataframe(sns.scatterplot, x="ft_posx", y="ft_posy", hue=hue_varname,
                 s=0.5, edgecolor='none', palette=palette) #, palette=palette)
