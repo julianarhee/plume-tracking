@@ -837,11 +837,11 @@ def process_df(df, xvar='ft_posx', yvar='ft_posy', fliplr=True,
             # FLIP L/R 
             xp, yp = util.fliplr_coordinates(df_['ft_posx'].values, \
                                              df_['ft_posy'].values)
-            df[df['trial_id']==trial_id].loc[df_.index, 'ft_posx'] = xp
-            df[df['trial_id']==trial_id].loc[df_.index, 'ft_posy'] = yp
+            df.loc[df['trial_id']==trial_id, 'ft_posx'] = xp
+            df.loc[df['trial_id']==trial_id, 'ft_posy'] = yp
 
             hp = -1*df_['ft_heading'].values
-            df[df['trial_id']==trial_id].loc[df_.index, 'ft_heading'] = hp
+            df.loc[df['trial_id']==trial_id, 'ft_heading'] = hp
 
         # parse in and out bouts
         df_ = parse_bouts(df_, count_varname='instrip', bout_varname='boutnum') # 1-count
