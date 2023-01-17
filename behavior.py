@@ -351,7 +351,9 @@ def load_dataframe(fpath, verbose=False, experiment=None,
         df0['led_on'] = False
         if 'led1_stpt' in df0.columns: #and 'led_on' not in df0.columns:
             datestr = int(df0['date'].unique())
-            if int(datestr) <= 20200720:
+            # 20200720: latest date for PAM_starved-flies (vertical_strip)
+            # 20200925: latest date for PAM_activateion_fed-flies
+            if int(datestr) <= 20200925:
                 df0['led_on'] = df0['led1_stpt']==1 
             else:
                 df0['led_on'] = df0['led1_stpt']==0
@@ -961,6 +963,45 @@ def find_crossovers(df_, strip_width=50):
                          if np.ceil(b_['ft_posx'].max() - b_['ft_posx'].min()) >= strip_width]
     return crossover_bouts
 
+
+def get_edgetracking_params(df, strip_width=50):
+    '''
+    Calculate chunks of tracking (split by crossover events).
+    Return dict of params for each found chunk. Len of keys is N crossovers.
+    '''
+    xovers = find_crossovers(df, strip_width=strip_width)
+    # add last bout
+    xovers.append(df['boutnum'].max()+1)
+    # cycle thru crossovers and count things
+    prev_xover = df['boutnum'].min() if df[df['instrip']]['boutnum'].min()==df['boutnum'].min() else df['boutnum'].min()
+    etparams={}
+    for xi, xover in enumerate(xovers):
+        curr_bouts = df[ (df['boutnum']<xover) & (df['boutnum']>prev_xover) ]
+        n_outside = len(curr_bouts[~curr_bouts['instrip']]['boutnum'].unique())
+        upwind_dists = curr_bouts.groupby('boutnum').apply(lambda x: x['ft_posy'].max() - x['ft_posy'].min())
+        upwind_dist = upwind_dists.sum()
+        # print(xi, prev_xover+1, n_outside, upwind_dists.sum())
+        prev_xover = xover
+        curr_params = {'n_outside_bouts': n_outside, 'upwind_dist': upwind_dist}
+        etparams.update({xi: curr_params})
+    return etparams
+
+
+def is_edgetracking(df, strip_width=50, \
+                        min_outside_bouts=3, min_upwind_dist=200):
+    '''
+    Set thresholds for diff params to define whether edgetracking or not.
+    Returns boolean.
+
+    '''
+    etparams = get_edgetracking_params(df, strip_width=50)
+    edgetracked=[]
+    for k, v in etparams.items():
+        et = v['n_outside_bouts'] > min_outside_bouts and v['upwind_dist'] > min_upwind_dist
+        edgetracked.append(et)
+
+    return any(edgetracked)
+    
 
 
 # ---------------------------------------------------------------------- 
@@ -2589,8 +2630,8 @@ def plot_trajectory(df0, odor_bounds=[], ax=None,
         hue_varname='instrip', palette={True: 'r', False: 'w'}, hue_norm=None,
         start_at_odor = False, zero_odor_start = False, 
         odor_lc='lightgray', odor_lw=0.5, title='',
-        markersize=0.5, alpha=1.0, 
-        center=False, xlim=200, plot_legend=True, plot_start=True):
+        markersize=0.5, alpha=1.0, legend_loc='upper left',
+        center=False, xlim=200, plot_legend=True, plot_start=True, start_size=3):
 
     # ---------------------------------------------------------------------
     if ax is None: 
@@ -2630,9 +2671,9 @@ def plot_trajectory(df0, odor_bounds=[], ax=None,
             ax.axhline(y=odor_start_ix, color='w', lw=0.5, linestyle=':')
     # trial start
     if plot_start:
-        ax.plot(df.loc[start_ix]['ft_posx'], df.loc[start_ix]['ft_posy'], 'g*')
-        ax.plot(df.iloc[-1]['ft_posx'], df.iloc[-1]['ft_posy'], 'b*') 
-    ax.legend(bbox_to_anchor=(1,1), loc='upper left', title=hue_varname, frameon=False)
+        ax.plot(df.loc[start_ix]['ft_posx'], df.loc[start_ix]['ft_posy'], 'g*', markersize=start_size)
+        ax.plot(df.iloc[-1]['ft_posx'], df.iloc[-1]['ft_posy'], 'b*', markersize=start_size) 
+    ax.legend(bbox_to_anchor=(1,1), loc=legend_loc, title=hue_varname, frameon=False)
     ax.set_title(title)
     xmax=500
     if center:
