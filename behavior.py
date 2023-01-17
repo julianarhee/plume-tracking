@@ -174,7 +174,8 @@ def load_dataframe_test(fpath, verbose=False, parse_filename=True):
 
 
 def load_dataframe(fpath, verbose=False, experiment=None, 
-                    parse_filename=True, savedir=None, remove_invalid=True, plot_errors=False):
+                    parse_filename=True, savedir=None, remove_invalid=True, 
+                    plot_errors=False, fliplr=True):
     '''
     Read raw .log file from behavior and return formatted dataframe.
     Assumes MFC for odor is either 'mfc2_stpt' or 'mfc3_stpt'.
@@ -284,6 +285,18 @@ def load_dataframe(fpath, verbose=False, experiment=None,
         df0['trial_id'] = fname
         df0['condition'] = 'none'
 
+    # rig is mirror-reversed, fliplr
+    if fliplr:
+        # FLIP L/R 
+        xp, yp = util.fliplr_coordinates(df0['ft_posx'].values, \
+                                         df0['ft_posy'].values)
+        df0['ft_posx'] = xp
+        df0['ft_posy'] = yp
+
+        hp = -1*df0['ft_heading'].values
+        df0['ft_heading'] = hp
+
+
     return df0
 
 def check_ft_skips(df, plot=False, remove_invalid=True, figpath=None, verbose=False):
@@ -353,6 +366,7 @@ def check_ft_skips(df, plot=False, remove_invalid=True, figpath=None, verbose=Fa
 
 def load_dataframe_resampled_csv(fpath):
     '''
+    TODO:  check if .csv behavior is already LR flipped or not
     Temp loading func for processed .csv files. 
 
     Arguments:
@@ -434,7 +448,8 @@ def correct_manual_conditions(df, experiment, logdf=None):
 
 def load_combined_df(src_dir=None, log_files=None, logdf=None, is_csv=False, 
                 experiment=None, savedir=None, 
-                create_new=False, verbose=False, save_errors=True, remove_invalid=True, 
+                create_new=False, verbose=False, save_errors=True, 
+                remove_invalid=True, fliplr=True,
                 process=True, save=True, parse_filename=True, 
                 rootdir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
     '''
@@ -508,7 +523,8 @@ def load_combined_df(src_dir=None, log_files=None, logdf=None, is_csv=False,
             else:
                 df_ = load_dataframe(fn, verbose=False, experiment=experiment, 
                                 parse_filename=parse_filename,
-                                savedir=savedir, remove_invalid=remove_invalid, plot_errors=save_errors)
+                                savedir=savedir, remove_invalid=remove_invalid,
+                                plot_errors=save_errors, fliplr=fliplr)
             dlist.append(df_)
         df = pd.concat(dlist, axis=0)
         # get experiment name
@@ -840,15 +856,6 @@ def process_df(df, xvar='ft_posx', yvar='ft_posy', fliplr=True,
         if verbose:
             print("... processing {}".format(trial_id))
 
-        if fliplr:
-            # FLIP L/R 
-            xp, yp = util.fliplr_coordinates(df_['ft_posx'].values, \
-                                             df_['ft_posy'].values)
-            df.loc[df['trial_id']==trial_id, 'ft_posx'] = xp
-            df.loc[df['trial_id']==trial_id, 'ft_posy'] = yp
-
-            hp = -1*df_['ft_heading'].values
-            df.loc[df['trial_id']==trial_id, 'ft_heading'] = hp
 
         # parse in and out bouts
         df_ = parse_bouts(df_, count_varname='instrip', bout_varname='boutnum') # 1-count
@@ -2409,12 +2416,12 @@ def normalize_position(b_):
 # Visualization
 # ----------------------------------------------------------------------
 
-def plot_trajectory_from_file(fpath, parse_filename=False, 
-            strip_width=10, strip_sep=200, ax=None, 
+def plot_trajectory_from_file(fpath, parse_filename=False, fliplr=True,
+            strip_width=10, strip_sep=200, ax=None,  
             zero_odor_start=False, start_at_odor=False, markersize=0.5):
     # load and process the csv data  
     df0 = load_dataframe(fpath, verbose=False, #cond=None, 
-                parse_filename=False)
+                parse_filename=False, fliplr=fliplr)
     fly_id=None
     if parse_filename:
         # try to parse experiment details from the filename
