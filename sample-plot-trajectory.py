@@ -77,6 +77,9 @@ def main():
         action='store_true', help='zero is odor onset')
     parser.add_argument('-S', '--save', default=False,
         action='store_true', help='save to tmp folder')
+    parser.add_argument('-f', '--origlr', default=False,
+        action='store_true', help='use raw l/r, instead of flipping')
+
     parser.add_argument('-m', '--markersize', default=0.5, type=float,
         action='store', help='markersize (default=0.5)')
 
@@ -94,13 +97,14 @@ def main():
     zero_odor_start = args.zero_odor_start
     save = args.save
     markersize = args.markersize
+    fliplr = not(args.origlr)
 
     fpath = select_logfile(experiment, datestr, user_input=user_input, rootdir=rootdir)
     fig, ax = pl.subplots()
     butil.plot_trajectory_from_file(fpath, parse_filename=parse_filename, 
                 strip_width=strip_width, strip_sep=strip_sep, ax=ax,
                 start_at_odor=start_at_odor, zero_odor_start=zero_odor_start,
-                markersize=markersize)
+                markersize=markersize, fliplr=fliplr)
 
     ax.set_box_aspect(2.0)
     # label figure and save
