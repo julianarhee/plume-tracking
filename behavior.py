@@ -182,6 +182,91 @@ def load_dataframe_test(fpath, verbose=False, parse_filename=True):
 
     return df0
 
+def get_odor_mfc(df):
+    '''
+    Get variable name of mfc (mfc1_stpt, etc.). Return string if 1 odor (usual csae), otherwise list.
+
+    '''
+    mfc_odor_vars = sorted([c for c in df.columns if 'mfc' in c \
+                        and c!='mfc1_stpt' and df[c].unique().max()>0], \
+                        key=util.natsort)
+    if len(mfc_odor_vars)==1:
+        return mfc_odor_vars[0]
+    else:
+        return tuple(mfc_odor_vars)
+
+def get_air_mfc(df, odor_mfc=None):
+    '''
+    Get AIR mfc, usually mfc1_stpt.
+    '''
+    if odor_mfc is None:
+        odor_mfc = get_odor_mfc(df)
+
+    if isinstance(odor_mfc, (list, tuple)):
+        air_mfc = [c for c in df.columns if 'mfc' in c and (c not in odor_mfc) \
+                and df[c].unique().max()>0]
+    else:
+        air_mfc = [c for c in df.columns if 'mfc' in c and c!=odor_mfc \
+                and df[c].unique().max()>0]
+    assert len(air_mfc)==1, "More than 1 empty air flows found: {}".format(str(air_mfc))
+    
+    return air_mfc[0]
+
+
+def get_mfc_range(df, mfc): #, mfc=None):
+
+    omax = df[df[mfc]!=0][mfc].max()
+    omin = df[df[mfc]!=0][mfc].min()
+
+    return omin, omax
+
+def get_mfc_params(df):
+    '''
+    Get dict of mfc parameters for odor and air. 
+    If odor_min and odor_max are the same (ignoring when odor mfc is 0), then
+    assumes strip_type is constant. If both odor/air fluctuates, is gradient. 
+    
+    Note: for gradients, percent_odor won't really make sense, and will depend on how far fly went up the plume.
+    
+    See Nb in ./tests/mfc_vars.ipynb for more info.
+    '''
+    mfc_odor_var = get_odor_mfc(df) #mfc_odor_vars[0]
+
+    # check strip type (gradient or constant)
+    # if constant, air and odor level should be distinct (assumes <50% odor)
+    # if gradient, air and odor range should fluctuate
+    mfc_odor={}
+    if isinstance(mfc_odor_var, (list, tuple)):
+        min_vals=[]; max_vals=[];
+        for oi, ovar in enumerate(mfc_odor_var):
+            omin, omax = get_mfc_range(df, ovar)
+            min_vals.append(omin)
+            max_vals.append(omax)
+        mfc_odor.update({'odor_mfc': tuple(mfc_odor_var),
+                         'odor_mfc_min': tuple(min_vals),
+                         'odor_mfc_max': tuple(max_vals)})
+    else:
+        omin, omax = get_mfc_range(df, mfc_odor_var)
+        mfc_odor.update({'odor_mfc': mfc_odor_var,
+                         'odor_mfc_min': omin,
+                         'odor_mfc_max': omax})
+
+    # get air info
+    mfc_air_var = get_air_mfc(df, odor_mfc=mfc_odor_var)
+    amin, amax = get_mfc_range(df, mfc_air_var)
+
+    mfc_dict = {
+        'air_mfc': mfc_air_var,
+        'air_min': amin,
+        'air_max': amax
+        }
+    mfc_dict.update(mfc_odor)
+
+    if isinstance(mfc_odor['odor_mfc'], str):
+        mfc_dict['percent_odor'] = (mfc_dict['odor_mfc_max']/mfc_dict['air_max']).round(3)
+    
+
+    return mfc_dict
 
 def load_dataframe(fpath, verbose=False, experiment=None, 
                     parse_filename=True, savedir=None, remove_invalid=True, 
@@ -230,23 +315,36 @@ def load_dataframe(fpath, verbose=False, experiment=None,
         df0['ft_heading'] = p #-p 
 
     # Calculate MDF odor on or off 
-    mfc_vars = [c for c in df0.columns if 'mfc' in c]
-    mfc_vars0 = [c for c in mfc_vars if len(df0[c].unique())>1] #== 2
-    if 'odor_on' not in df0.columns:
-        df0['odor_on'] = False
-        mfc_vars0 = [c for c in mfc_vars if len(df0[c].unique())>1] #== 2
-        if len(mfc_vars0)>0:
-            mfc_vars = [c for c in mfc_vars0 if c!='mfc1_stpt']
-            mfc_varname = mfc_vars[0]
-            df0.loc[df0[mfc_varname]>0, 'odor_on'] = True
-        # otherwise, only air (no odor)
+    # odor mfc is usually at 0.2/0.25 (less than 0.4)
+    # air mfc is usually at 0.4 (dep. on airflow, 400 or 250, for ex.)
+    if 'odor_on' in df0.columns:
+        df0 = df0.rename(columns={'odor_on': 'odor_on_og'})
+
+    df0['odor_on'] = False  
+    df0['strip_type'] = 'constant'
+    mfc_params = get_mfc_params(df0)
+    if mfc_params['odor_mfc'] is not None:
+        # determine which mfc is odor (as opposed to air, air is usual mfc1)
+        mfc_odor_var = mfc_params['odor_mfc'] 
+        if isinstance(mfc_odor_var, str):
+            df0.loc[df0[mfc_odor_var]>0, 'odor_on'] = True
+        else:
+            # can return several mfc vars (if >1 odor, or empty)
+            for ovar in mfc_odor_var:
+                df0.loc[df0[mfc_odor_var]>0, 'odor_on'] = True
+        # check strip type (gradient or constant)
+        if isinstance(mfc_odor_var, str):
+            omin, omax = mfc_params['odor_mfc_min'], mfc_params['odor_mfc_max']
+            is_gradient = omin!=omax
+            df0['strip_type'] = 'gradient' if is_gradient else 'constant'
+            # TODO: not accounting for gradient if >1 odor
     else:
+        # otherwise, only constant air (no odor)
         if verbose:
             print("... no odor changes detected in MFCs.")
 
-    # check strip type (gradient or constant)
-    is_gradient = len([c for c in mfc_vars0 if len(df0[c].unique())>2]) == 2    
-    df0['strip_type'] = 'gradient' if is_gradient else 'constant'
+ 
+    # TODO:  add percentage odor for constant strip
 
     # check LEDs
     if 'led_on' not in df0.columns:
@@ -465,6 +563,8 @@ def correct_manual_conditions(df, experiment, logdf=None):
             df.loc[df['condition']=='fed_no_lights', 'condition'] = 'pamchr_fed_no_lights'
             df.loc[df['condition']=='fed_single', 'condition'] = 'pamchr_fed_single'
             df.loc[df['condition']=='fed_lights', 'condition'] = 'pamchr_fed_lights'
+        elif experiment=='constant_vs_gradient':
+            df.loc[df['condition']=='constant2', 'condition'] = 'constantodor2'
 
         #df['genotype'] = ''
 
