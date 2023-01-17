@@ -22,6 +22,8 @@ import scipy as sp
 import rdp
 import _pickle as pkl
 import scipy.stats as sts
+import logging
+
 
 # plotting
 import matplotlib as mpl
@@ -32,6 +34,14 @@ import seaborn as sns
 # custom
 import utils as util
 import google_drive as gdrive
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s')
+file_handler = logging.FileHandler('behavior.log', mode='w')
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 # ----------------------------------------------------------------------
 # Data loading
@@ -221,13 +231,14 @@ def load_dataframe(fpath, verbose=False, experiment=None,
     # Calculate MDF odor on or off 
     mfc_vars = [c for c in df0.columns if 'mfc' in c]
     mfc_vars0 = [c for c in mfc_vars if len(df0[c].unique())>1] #== 2
-    df0['odor_on'] = False
-    mfc_vars0 = [c for c in mfc_vars if len(df0[c].unique())>1] #== 2
-    if len(mfc_vars0)>0:
-        mfc_vars = [c for c in mfc_vars0 if c!='mfc1_stpt']
-        mfc_varname = mfc_vars[0]
-        df0.loc[df0[mfc_varname]>0, 'odor_on'] = True
-    # otherwise, only air (no odor)
+    if 'odor_on' not in df0.columns:
+        df0['odor_on'] = False
+        mfc_vars0 = [c for c in mfc_vars if len(df0[c].unique())>1] #== 2
+        if len(mfc_vars0)>0:
+            mfc_vars = [c for c in mfc_vars0 if c!='mfc1_stpt']
+            mfc_varname = mfc_vars[0]
+            df0.loc[df0[mfc_varname]>0, 'odor_on'] = True
+        # otherwise, only air (no odor)
     else:
         if verbose:
             print("... no odor changes detected in MFCs.")
@@ -237,20 +248,22 @@ def load_dataframe(fpath, verbose=False, experiment=None,
     df0['strip_type'] = 'gradient' if is_gradient else 'constant'
 
     # check LEDs
-    df0['led_on'] = False
-    if 'led1_stpt' in df0.columns: #and 'led_on' not in df0.columns:
-        datestr = int(df0['date'].unique())
-        if int(datestr) <= 20200720:
-            df0['led_on'] = df0['led1_stpt']==1 
-        else:
-            df0['led_on'] = df0['led1_stpt']==0
+    if 'led_on' not in df0.columns:
+        df0['led_on'] = False
+        if 'led1_stpt' in df0.columns: #and 'led_on' not in df0.columns:
+            datestr = int(df0['date'].unique())
+            if int(datestr) <= 20200720:
+                df0['led_on'] = df0['led1_stpt']==1 
+            else:
+                df0['led_on'] = df0['led1_stpt']==0
 
     # assign "instrip" -- can be odor or led (odor takes priority)
-    df0['instrip'] = False
-    if True in df0['odor_on'].unique():
-        df0['instrip'] = df0['odor_on']
-    elif True in df0['led_on'].unique():
-        df0['instrip'] = df0['led_on']
+    if 'instrip' not in df0.columns:
+        df0['instrip'] = False
+        if True in df0['odor_on'].unique():
+            df0['instrip'] = df0['odor_on']
+        elif True in df0['led_on'].unique():
+            df0['instrip'] = df0['led_on']
 
     # check for wonky skips
     figpath = os.path.join(savedir, 'errors', 'wonkyft_{}.png'.format(fname)) if savedir is not None else None
@@ -263,7 +276,7 @@ def load_dataframe(fpath, verbose=False, experiment=None,
     df0, ft_flag = check_ft_skips(df0, plot=plot_errors, remove_invalid=remove_invalid,
                     figpath=figpath, verbose=verbose)
     if ft_flag:
-        print("--> found bad skips in FTs, check: {}".format(fname))
+        logging.warning("--> found bad skips in FTs, check: {}".format(fname))
 
     # get experiment info
     if parse_filename:
@@ -318,7 +331,7 @@ def check_ft_skips(df, plot=False, remove_invalid=True, figpath=None, verbose=Fa
             #time_step = df.iloc[wonky_skips[0]]['time'] - df.iloc[wonky_skips[0]-1]['time']
             bad_skips.update({pvar: wonky_skips})
             if verbose:
-                print("WARNING: found wonky ft skip ({} jumped {:.2f}).".format(pvar, first_step))
+                logging.info("WARNING: found wonky ft skip ({} jumped {:.2f}).".format(pvar, first_step))
     if plot==True and len(bad_skips.keys())>0:
         fig, ax = pl.subplots(figsize=(3,3)) 
         fname = df['filename'].unique()[0]
@@ -406,9 +419,20 @@ def correct_manual_conditions(df, experiment, logdf=None):
         for logfn, df_ in df.groupby('filename'):
             # specific to old data log format from google sheets...
             experiment = logdf[logdf['log']=='{}.log'.format(logfn)]['experiment'].values[0]
-            genotype = logdf[logdf['log']=='{}.log'.format(logfn)]['genotype'].values[0]
             df.loc[df['filename']==logfn, 'condition'] = experiment
-            df.loc[df['filename']==logfn, 'genotype'] = genotype
+
+            if 'genotype' in logdf.columns:
+                genotype = logdf[logdf['log']=='{}.log'.format(logfn)]['genotype'].values[0]
+                df.loc[df['filename']==logfn, 'genotype'] = genotype
+            if 'fly' in logdf.columns:
+                for fi, df_ in df.groupby('filename'):
+                    explicit_fly_id = logdf.loc[logdf['log']=='{}.log'.format(fi)]['fly'].unique()[0]
+                    datestr = df_['date'].unique()[0]
+                    curr_id = df['fly_id'].unique()
+                    new_id = '{}-fly{}'.format(datestr, explicit_fly_id)
+                    logging.info("Renaming: {} to {}".format(curr_id, new_id))
+                    df.loc[df['filename']==fi, 'fly_id'] = new_id
+                    
     else:
         if experiment=='vertical_strip/paired_experiments':
             # update condition names
@@ -455,6 +479,14 @@ def load_combined_df(src_dir=None, log_files=None, logdf=None, is_csv=False,
     Returns:
         df (pd.DatFrame) : all (processed) dfs across found log files. 
     '''
+#    logging.basicConfig(filename=os.path.join(src_dir, 'behavior.log'), #logname,
+#                        filemode='a',
+#                        format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+#                        datefmt='%H:%M:%S',
+#                        level=logging.DEBUG)
+
+    logging.info("Processing combined dataframe.")
+
     if src_dir is None:
         assert log_files is not None, "Must provide src_dir or log_files"
         src_dir = os.path.split(log_files[0])[0]
@@ -495,21 +527,26 @@ def load_combined_df(src_dir=None, log_files=None, logdf=None, is_csv=False,
         # cycle thru log files and combine into 1 mega df
         dlist = []
         for fi, fn in enumerate(log_files):
-            fname = os.path.split(fn)[-1]
-            if verbose is True:
-                try:
-                    exp, datestr, fly_id, cond = parse_info_from_filename(fn) 
-                    print(fi, datestr, fly_id, cond)
-                except Exception as e:
-                    print(fname)
-                    parse_filename=False
-            if is_csv:
-                df_  = load_dataframe_resampled_csv(fn)
-            else:
-                df_ = load_dataframe(fn, verbose=False, experiment=experiment, 
-                                parse_filename=parse_filename,
-                                savedir=savedir, remove_invalid=remove_invalid, plot_errors=save_errors)
-            dlist.append(df_)
+            try:
+                fname = os.path.split(fn)[-1]
+                if verbose is True:
+                    try:
+                        exp, datestr, fly_id, cond = parse_info_from_filename(fn) 
+                        print(fi, datestr, fly_id, cond)
+                    except Exception as e:
+                        print(fname)
+                        parse_filename=False
+                if is_csv:
+                    df_  = load_dataframe_resampled_csv(fn)
+                else:
+                    df_ = load_dataframe(fn, verbose=False, experiment=experiment, 
+                                    parse_filename=parse_filename,
+                                    savedir=savedir, remove_invalid=remove_invalid, plot_errors=save_errors)
+                dlist.append(df_)
+            except Exception as e:
+                logging.error("Issue parsing: {}.".format(fn))
+                logging.info(e)
+
         df = pd.concat(dlist, axis=0)
         # get experiment name
         if experiment is None:
