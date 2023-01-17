@@ -223,8 +223,8 @@ def smooth_timecourse(in_trace, win_size=41):
 # ----------------------------------------------------------------------
 # Visualization 
 # ----------------------------------------------------------------------
-def label_figure(fig, fig_id):
-    fig.text(0.01, 0.97, fig_id, fontsize=8)
+def label_figure(fig, fig_id, x=0.01, y=0.98):
+    fig.text(x, y, fig_id, fontsize=8)
 
 
 def set_sns_style(style='dark'):
