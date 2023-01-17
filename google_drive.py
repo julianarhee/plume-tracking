@@ -22,8 +22,18 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
 import pandas as pd
+import sys
+module_path = os.path.abspath(os.path.join('..'))
+if module_path not in sys.path:
+    sys.path.append(module_path)
+import utils as util
 
 def gsheet_api_check(SCOPES, parent_dir='/Users/julianarhee/Repositories/edge-tracking'):
+    if util.get_os()=='Darwin':
+        parent_dir='/Users/julianarhee/Repositories/edge-tracking'
+    elif util.get_os() == 'Linux':
+        parent_dir = '/home/julianarhee/Repositories/edge-tracking'
+
     #print(os.listdir(parent_dir))
     creds = None
     if os.path.exists(os.path.join(parent_dir, 'token.pickle')):
@@ -73,34 +83,45 @@ def gsheet_to_dataframe(SPREADSHEET_ID, DATA_TO_PULL='Sheet1',
 
 def get_sheet_keys():
 
-    gsheet_key = { '0-degree': '1K_SkaT3JUA2Ik8uiwB6kJMwHnd935bZvZB4If0zh8rY',
-          '15-degree': '1qCrV96jUo24lpZ7-k2-B9RWG5RSQDSgnSn-sFgjS7ys',
-          '45-degree': '15mE8k1Z9PN3_xhQH6mz1AEIyspjlfg5KPkd1aNLs9TM',
-          'T-plume': '14r0TgRUhohZtw2GQgirUseBWXK8NPbyqPzPvAtND7Gs',
-          'constant_vs_gradient': '1Is1t3UtMAycrvpSMvEf6j2Gpc4b5jkEdm7yTIEAxfw8',
-          'spontaneous_edge_tracking': '1v2z5npPBzF1et2OQoA2CQuQp8ScBT5HX3uv8KEaAXlk',
-          'hdeltca': '1CnFEOQ06Nc8qiyaxab7mUQuWu_UHiFBRQj2C6ZhFfs4'
+    gsheet_key = { 
+      '0-degree': '1K_SkaT3JUA2Ik8uiwB6kJMwHnd935bZvZB4If0zh8rY',
+      '15-degree': '1qCrV96jUo24lpZ7-k2-B9RWG5RSQDSgnSn-sFgjS7ys',
+      '45-degree': '15mE8k1Z9PN3_xhQH6mz1AEIyspjlfg5KPkd1aNLs9TM',
+      'T-plume': '14r0TgRUhohZtw2GQgirUseBWXK8NPbyqPzPvAtND7Gs',
+      'constant_vs_gradient': '1Is1t3UtMAycrvpSMvEf6j2Gpc4b5jkEdm7yTIEAxfw8',
+      'spontaneous_edge_tracking': '1v2z5npPBzF1et2OQoA2CQuQp8ScBT5HX3uv8KEaAXlk',
+      'hdeltca': '1CnFEOQ06Nc8qiyaxab7mUQuWu_UHiFBRQj2C6ZhFfs4',
+      'PAM_GtACR1': '1ZGPrQSciyYYftOqrHcKMGQTu9jh7gb5OY0I0_W0EmW0'
         }
     return gsheet_key   
 
 def get_sheet_id(experiment):
-
-    if experiment == '0-degree':
-        sheet_id = '1K_SkaT3JUA2Ik8uiwB6kJMwHnd935bZvZB4If0zh8rY'
-    elif experiment == '15-degree':
-        sheet_id = '1qCrV96jUo24lpZ7-k2-B9RWG5RSQDSgnSn-sFgjS7ys'
-    elif experiment == '45-degree':
-        sheet_id = '15mE8k1Z9PN3_xhQH6mz1AEIyspjlfg5KPkd1aNLs9TM'
-    elif experiment in ['T-plume', 't-plume', 'tplume', '90-degree']:
-        sheet_id = '14r0TgRUhohZtw2GQgirUseBWXK8NPbyqPzPvAtND7Gs'
-    elif experiment in ['constant_gradient', 'constant_vs_gradient']:
-        sheet_id = '1Is1t3UtMAycrvpSMvEf6j2Gpc4b5jkEdm7yTIEAxfw8'
-    elif experiment.lower() == 'spontaneous_edge_tracking':
-        sheet_id = '1v2z5npPBzF1et2OQoA2CQuQp8ScBT5HX3uv8KEaAXlk'
-    elif experiment == 'hdeltac':
-        sheet_id = '1CnFEOQ06Nc8qiyaxab7mUQuWu_UHiFBRQj2C6ZhFfs4'
+    
+    gsheet_key = get_sheet_keys()
+    if experiment in gsheet_key.keys():
+        sheet_id = gsheet_key[experiment]
     else:
         sheet_id = None
+
+#    if experiment == '0-degree':
+#        sheet_id = '1K_SkaT3JUA2Ik8uiwB6kJMwHnd935bZvZB4If0zh8rY'
+#    elif experiment == '15-degree':
+#        sheet_id = '1qCrV96jUo24lpZ7-k2-B9RWG5RSQDSgnSn-sFgjS7ys'
+#    elif experiment == '45-degree':
+#        sheet_id = '15mE8k1Z9PN3_xhQH6mz1AEIyspjlfg5KPkd1aNLs9TM'
+#    elif experiment in ['T-plume', 't-plume', 'tplume', '90-degree']:
+#        sheet_id = '14r0TgRUhohZtw2GQgirUseBWXK8NPbyqPzPvAtND7Gs'
+#    elif experiment in ['constant_gradient', 'constant_vs_gradient']:
+#        sheet_id = '1Is1t3UtMAycrvpSMvEf6j2Gpc4b5jkEdm7yTIEAxfw8'
+#    elif experiment.lower() == 'spontaneous_edge_tracking':
+#        sheet_id = '1v2z5npPBzF1et2OQoA2CQuQp8ScBT5HX3uv8KEaAXlk'
+#    elif experiment == 'hdeltac':
+#        sheet_id = '1CnFEOQ06Nc8qiyaxab7mUQuWu_UHiFBRQj2C6ZhFfs4'
+#    elif experiment == 'PAM_GtACR1':
+#        sheet_id = '1ZGPrQSciyYYftOqrHcKMGQTu9jh7gb5OY0I0_W0EmW0/edit#gid=0'
+#
+#    else:
+#        sheet_id = None
 
     return sheet_id
 
