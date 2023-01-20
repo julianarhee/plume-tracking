@@ -1010,7 +1010,7 @@ def is_edgetracking(df, strip_width=50, \
 # ----------------------------------------------------------------------
 def process_df(df, xvar='ft_posx', yvar='ft_posy', fliplr=True,
                 bout_thresh=0.5, switch_method='previous',
-                smooth=False, window_size=11, verbose=False):
+                smooth=False, fs=60, fc=7.5, verbose=False):
     '''
     Parse trajectory into bouts (filter too-short bouts).
     Calculate speed and distance between each point.
@@ -1047,7 +1047,7 @@ def process_df(df, xvar='ft_posx', yvar='ft_posy', fliplr=True,
         df_ = calculate_distance(df_, xvar=xvar, yvar=yvar)
         # smooth?
         if smooth:
-            df_ = smooth_traces(df_, window_size=window_size, return_same=True)
+            df_ = smooth_traces(df_, fs=fs, fc=fc, return_same=True)
         df['bout_type'] = 'outstrip'
         df.loc[df['instrip'], 'bout_type'] = 'instrip' 
         dlist.append(df_)
@@ -1137,7 +1137,7 @@ def calculate_speed(df0, xvar='ft_posx', yvar='ft_posy'):
 
     return df0
 
-def calculate_speed2(df0, smooth=True, window_size=11, return_same=True):
+def calculate_speed2(df0, smooth=True, fs=60, fc=7.5, return_same=True):
     '''
     Calculate instantaneous speed from pos1 to pos2 using linalg.norm().
 
@@ -1157,7 +1157,7 @@ def calculate_speed2(df0, smooth=True, window_size=11, return_same=True):
     diff_df['cum_time'] = diff_df['time'].cumsum() # Get relative time  
 
     if smooth:
-        diff_df = smooth_traces_each(diff_df, varname='speed', window_size=window_size)
+        diff_df = smooth_traces_each(diff_df, varname='speed',fs=fs, fc=fc) 
 
     if return_same:
         df0['speed'] = diff_df['speed']
@@ -1344,7 +1344,7 @@ def smooth_traces_each(df, varname='speed', fs=60, fc=7.5, return_same=True):
     else:
         return sx
 
-def smooth_traces(df, xvar='ft_posx', yvar='ft_posy', window_size=13, return_same=True):
+def smooth_traces(df, xvar='ft_posx', yvar='ft_posy', fs=60, fc=7.5, return_same=True):
     '''
     Smooths x- and y-vars, which seems to be more accurate than interpolating over 2d.
 
@@ -1361,7 +1361,7 @@ def smooth_traces(df, xvar='ft_posx', yvar='ft_posy', window_size=13, return_sam
         _description_
     '''
     for v in [xvar, yvar]:
-        df = smooth_traces_each(df, varname=v, window_size=window_size, return_same=True)
+        df = smooth_traces_each(df, varname=v, fs=fs, fc=fc, return_same=True)
 
     return df
 
