@@ -15,6 +15,7 @@ import glob
 import re
 import traceback
 from datetime import datetime
+from scipy import signal
 import numpy as np
 import pandas as pd
 import scipy as sp
@@ -1323,17 +1324,25 @@ def filter_bouts_by_dur(df, bout_thresh=0.5, bout_varname='boutnum',
     return df
 
 
-def smooth_traces_each(df, varname='speed', window_size=11, return_same=True):
-    smooth_t = util.temporal_downsample(df[varname], window_size)
-
+def smooth_traces_each(df, varname='speed', fs=60, fc=7.5, return_same=True):
+    '''
+    low-pass filter with 5th order Butterworth filter using freq cut-off 7.5Hz
+    '''
+    #smooth_t = util.temporal_downsample(df[varname], 11) #window_size)
     #df[new_varname] = util.smooth_timecourse(df[varname], window_size)
 
+    # use butterworth
+    w = fc / (fs / 2)
+    b, a = signal.butter(5, w, 'low', analog=False) #, fs=60)
+    sx = signal.filtfilt(b, a, df_[varname].values)
+    #sy1  = signal.filtfilt(b, a, df_['ft_posy'].values)
+ 
     if return_same:
         new_varname = 'smoothed_{}'.format(varname)
-        df[new_varname] = smooth_t
+        df[new_varname] = sx
         return df
     else:
-        return smooth_t
+        return sx
 
 def smooth_traces(df, xvar='ft_posx', yvar='ft_posy', window_size=13, return_same=True):
     '''
@@ -1443,7 +1452,7 @@ def get_odor_grid(df, strip_width=10, strip_sep=200, use_crossings=True,
     return odor_grid, odor_flag
 
 
-def find_borders(df, strip_width = 10, strip_spacing = 200):
+def create_strip_xcoords(df, strip_width = 10, strip_spacing = 200):
     '''from andy'''
     from scipy import signal as sg
     x = df.ft_posx
