@@ -1334,7 +1334,7 @@ def smooth_traces_each(df, varname='speed', fs=60, fc=7.5, return_same=True):
     # use butterworth
     w = fc / (fs / 2)
     b, a = signal.butter(5, w, 'low', analog=False) #, fs=60)
-    sx = signal.filtfilt(b, a, df_[varname].values)
+    sx = signal.filtfilt(b, a, df[varname].values)
     #sy1  = signal.filtfilt(b, a, df_['ft_posy'].values)
  
     if return_same:
