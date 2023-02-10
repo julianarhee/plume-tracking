@@ -65,9 +65,9 @@ def main():
     parser.add_argument('-d', '--datestr', default='MMDDYYYY-HHmm', action='store',
         help='MMDDYYYY-HHmm.log format')
 
-    parser.add_argument('-w', '--strip_width', type=float, default=10,
+    parser.add_argument('-w', '--strip_width', type=float, default=50,
         help='odor width, mm (default: 10)')
-    parser.add_argument('-s', '--strip_sep', type=float, default=200,
+    parser.add_argument('-s', '--strip_sep', type=float, default=500,
         help='grid separation, mm (default: 200)')
     parser.add_argument('-v', '--verbose', default=False,
         action='store_true', help='verbose, print all statements')
@@ -79,6 +79,8 @@ def main():
         action='store_true', help='save to tmp folder')
     parser.add_argument('-f', '--origlr', default=False,
         action='store_true', help='use raw l/r, instead of flipping')
+    parser.add_argument('-x', '--keep_all_frames', default=False,
+        action='store_true', help='do not remove invalid skips')
 
     parser.add_argument('-m', '--markersize', default=0.5, type=float,
         action='store', help='markersize (default=0.5)')
@@ -98,18 +100,20 @@ def main():
     save = args.save
     markersize = args.markersize
     fliplr = not(args.origlr)
+    remove_invalid = not(args.keep_all_frames)
+    plot_errors = args.keep_all_frames # plot errors of keeping all
 
     fpath = select_logfile(experiment, datestr, user_input=user_input, rootdir=rootdir)
-    fig, ax = pl.subplots()
-    butil.plot_trajectory_from_file(fpath, parse_filename=parse_filename, 
-                strip_width=strip_width, strip_sep=strip_sep, ax=ax,
+    #fig, ax = pl.subplots()
+    ax = butil.plot_trajectory_from_file(fpath, parse_filename=parse_filename, 
+                strip_width=strip_width, strip_sep=strip_sep, ax=None,
                 start_at_odor=start_at_odor, zero_odor_start=zero_odor_start,
-                markersize=markersize, fliplr=fliplr)
-
+                markersize=markersize, fliplr=fliplr, 
+                remove_invalid=remove_invalid, plot_errors=plot_errors)
     ax.set_box_aspect(2.0)
     # label figure and save
     fig_id = '{}: {}'.format(experiment, datestr)
-    util.label_figure(fig, fig_id)
+    util.label_figure(ax.figure, fig_id)
 
     if save:
         save_dir = os.path.join(rootdir, 'figures')
