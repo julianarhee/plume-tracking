@@ -14,6 +14,7 @@ import time
 import glob
 import re
 import traceback
+import json
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -182,6 +183,15 @@ def load_dataframe_test(fpath, verbose=False, parse_filename=True):
 
     return df0
 
+def load_experiment_config(fpath):
+    
+    parentdir, fname = os.path.split(fpath)
+    fbase = os.path.splitext(fname)[0]
+    fconfig = os.path.join(parentdir, '{}_config.json'.format(fbase))
+    with open(fconfig, 'r') as f:
+        exp_config = json.load(f)
+
+    return exp_config
 
 def load_dataframe(fpath, verbose=False, experiment=None, 
                     parse_filename=True, savedir=None, remove_invalid=True, 
@@ -203,8 +213,13 @@ def load_dataframe(fpath, verbose=False, experiment=None,
         df0 (pd.DataFrame) 
 
     '''
+    exp_config = load_experiment_config(fpath) 
+    acquisition_rate = exp_config['experiment']['acquisition_rate']
     # read .log as dataframe 
     df0 = pd.read_csv(fpath, encoding='latin' )#, sep=",", skiprows=[1], header=0, 
+    if df0['ft_frame'].iloc[0] == 0:
+        df0 = df0.drop(index=0).reset_index()
+
     # get file info
     fname = os.path.splitext(os.path.split(fpath)[-1])[0]
     df0['filename'] = fname
@@ -275,7 +290,7 @@ def load_dataframe(fpath, verbose=False, experiment=None,
     if figpath is None and plot_errors is True:
         print("[warning]: Provide savedir to save errors fig")
     df0, ft_flag = check_ft_skips(df0, plot=plot_errors, remove_invalid=remove_invalid,
-                    figpath=figpath, verbose=verbose)
+                    figpath=figpath, verbose=verbose, acquisition_rate=acquisition_rate)
     if ft_flag:
         logging.warning("--> found bad skips in FTs, check: {}".format(fname))
 
@@ -312,7 +327,7 @@ def load_dataframe(fpath, verbose=False, experiment=None,
 
     return df0
 
-def check_ft_skips(df, plot=False, remove_invalid=True, figpath=None, verbose=False):
+def check_ft_skips(df, plot=False, remove_invalid=True, figpath=None, verbose=False, acquisition_rate=60):
     '''
     Check dataframe of current logfile and find large skips.
 
@@ -329,7 +344,12 @@ def check_ft_skips(df, plot=False, remove_invalid=True, figpath=None, verbose=Fa
     '''
     fname = df['filename'].unique()
     bad_skips={}
-    max_step_size={'ft_posx': 10, 'ft_posy': 10, 'ft_frame': 100}
+    poslim = 300 # 100 mm/s
+    max_nsec_skip = 2
+
+    max_step_pos = np.ceil(poslim / acquisition_rate)
+    max_step_frame = max_nsec_skip/ (1/acquisition_rate)
+    max_step_size={'ft_posx': max_step_pos, 'ft_posy': max_step_pos, 'ft_frame': 100}
     for pvar, stepsize in max_step_size.items():
         if pvar=='ft_frame':
             first_frame = df['ft_frame'].min() 
@@ -358,7 +378,9 @@ def check_ft_skips(df, plot=False, remove_invalid=True, figpath=None, verbose=Fa
         #pl.show()
         if figpath is not None:
             pl.savefig(figpath)
-        pl.close()
+            pl.close()
+        else:
+            pl.show()
 
     flag = len(bad_skips)>0
     valid_df = df.copy()
@@ -2453,12 +2475,14 @@ def normalize_position(b_):
 # Visualization
 # ----------------------------------------------------------------------
 
-def plot_trajectory_from_file(fpath, parse_filename=False, fliplr=True,
+def plot_trajectory_from_file(fpath, parse_filename=False, 
+            fliplr=True, remove_invalid=True, plot_errors=False,
             strip_width=10, strip_sep=200, ax=None,  
             zero_odor_start=False, start_at_odor=False, markersize=0.5):
     # load and process the csv data  
     df0 = load_dataframe(fpath, verbose=False, #cond=None, 
-                parse_filename=False, fliplr=fliplr)
+                parse_filename=False, fliplr=fliplr, 
+                remove_invalid=remove_invalid, plot_errors=plot_errors)
     fly_id=None
     if parse_filename:
         # try to parse experiment details from the filename
@@ -2478,7 +2502,7 @@ def plot_trajectory_from_file(fpath, parse_filename=False, fliplr=True,
     strip_borders = find_strip_borders(df0, strip_width=strip_width, strip_sep=strip_sep, 
                                 entry_ix=None)
     title = os.path.splitext(os.path.split(fpath)[-1])[0]
-    plot_trajectory(df0, odor_bounds=strip_borders, title=title, ax=ax,
+    ax = plot_trajectory(df0, odor_bounds=strip_borders, title=title, ax=ax,
             start_at_odor=start_at_odor, zero_odor_start=zero_odor_start,
             markersize=markersize)
 
