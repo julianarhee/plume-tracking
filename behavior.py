@@ -16,6 +16,7 @@ import re
 import traceback
 import json
 from datetime import datetime
+from scipy import signal
 import numpy as np
 import pandas as pd
 import scipy as sp
@@ -193,6 +194,92 @@ def load_experiment_config(fpath):
 
     return exp_config
 
+def get_odor_mfc(df):
+    '''
+    Get variable name of mfc (mfc1_stpt, etc.). Return string if 1 odor (usual csae), otherwise list.
+
+    '''
+    mfc_odor_vars = sorted([c for c in df.columns if 'mfc' in c \
+                        and c!='mfc1_stpt' and df[c].unique().max()>0], \
+                        key=util.natsort)
+    if len(mfc_odor_vars)==1:
+        return mfc_odor_vars[0]
+    else:
+        return tuple(mfc_odor_vars)
+
+def get_air_mfc(df, odor_mfc=None):
+    '''
+    Get AIR mfc, usually mfc1_stpt.
+    '''
+    if odor_mfc is None:
+        odor_mfc = get_odor_mfc(df)
+
+    if isinstance(odor_mfc, (list, tuple)):
+        air_mfc = [c for c in df.columns if 'mfc' in c and (c not in odor_mfc) \
+                and df[c].unique().max()>0]
+    else:
+        air_mfc = [c for c in df.columns if 'mfc' in c and c!=odor_mfc \
+                and df[c].unique().max()>0]
+    assert len(air_mfc)==1, "More than 1 empty air flows found: {}".format(str(air_mfc))
+    
+    return air_mfc[0]
+
+
+def get_mfc_range(df, mfc): #, mfc=None):
+
+    omax = df[df[mfc]!=0][mfc].max()
+    omin = df[df[mfc]!=0][mfc].min()
+
+    return omin, omax
+
+def get_mfc_params(df):
+    '''
+    Get dict of mfc parameters for odor and air. 
+    If odor_min and odor_max are the same (ignoring when odor mfc is 0), then
+    assumes strip_type is constant. If both odor/air fluctuates, is gradient. 
+    
+    Note: for gradients, percent_odor won't really make sense, and will depend on how far fly went up the plume.
+    
+    See Nb in ./tests/mfc_vars.ipynb for more info.
+    '''
+    mfc_odor_var = get_odor_mfc(df) #mfc_odor_vars[0]
+
+    # check strip type (gradient or constant)
+    # if constant, air and odor level should be distinct (assumes <50% odor)
+    # if gradient, air and odor range should fluctuate
+    mfc_odor={}
+    if isinstance(mfc_odor_var, (list, tuple)):
+        min_vals=[]; max_vals=[];
+        for oi, ovar in enumerate(mfc_odor_var):
+            omin, omax = get_mfc_range(df, ovar)
+            min_vals.append(omin)
+            max_vals.append(omax)
+        mfc_odor.update({'odor_mfc': tuple(mfc_odor_var),
+                         'odor_mfc_min': tuple(min_vals),
+                         'odor_mfc_max': tuple(max_vals)})
+    else:
+        omin, omax = get_mfc_range(df, mfc_odor_var)
+        mfc_odor.update({'odor_mfc': mfc_odor_var,
+                         'odor_mfc_min': omin,
+                         'odor_mfc_max': omax})
+
+    # get air info
+    mfc_air_var = get_air_mfc(df, odor_mfc=mfc_odor_var)
+    amin, amax = get_mfc_range(df, mfc_air_var)
+
+    mfc_dict = {
+        'air_mfc': mfc_air_var,
+        'air_min': amin,
+        'air_max': amax
+        }
+    mfc_dict.update(mfc_odor)
+
+    if isinstance(mfc_odor['odor_mfc'], str):
+        mfc_dict['percent_odor'] = (mfc_dict['odor_mfc_max']/mfc_dict['air_max']).round(3)
+    
+
+    return mfc_dict
+
 def load_dataframe(fpath, verbose=False, experiment=None, 
                     parse_filename=True, savedir=None, remove_invalid=True, 
                     plot_errors=False, fliplr=True):
@@ -245,30 +332,45 @@ def load_dataframe(fpath, verbose=False, experiment=None,
         df0['ft_heading'] = p #-p 
 
     # Calculate MDF odor on or off 
-    mfc_vars = [c for c in df0.columns if 'mfc' in c]
-    mfc_vars0 = [c for c in mfc_vars if len(df0[c].unique())>1] #== 2
-    if 'odor_on' not in df0.columns:
-        df0['odor_on'] = False
-        mfc_vars0 = [c for c in mfc_vars if len(df0[c].unique())>1] #== 2
-        if len(mfc_vars0)>0:
-            mfc_vars = [c for c in mfc_vars0 if c!='mfc1_stpt']
-            mfc_varname = mfc_vars[0]
-            df0.loc[df0[mfc_varname]>0, 'odor_on'] = True
-        # otherwise, only air (no odor)
+    # odor mfc is usually at 0.2/0.25 (less than 0.4)
+    # air mfc is usually at 0.4 (dep. on airflow, 400 or 250, for ex.)
+    if 'odor_on' in df0.columns:
+        df0 = df0.rename(columns={'odor_on': 'odor_on_og'})
+
+    df0['odor_on'] = False  
+    df0['strip_type'] = 'constant'
+    mfc_params = get_mfc_params(df0)
+    if mfc_params['odor_mfc'] is not None:
+        # determine which mfc is odor (as opposed to air, air is usual mfc1)
+        mfc_odor_var = mfc_params['odor_mfc'] 
+        if isinstance(mfc_odor_var, str):
+            df0.loc[df0[mfc_odor_var]>0, 'odor_on'] = True
+        else:
+            # can return several mfc vars (if >1 odor, or empty)
+            for ovar in mfc_odor_var:
+                df0.loc[df0[mfc_odor_var]>0, 'odor_on'] = True
+        # check strip type (gradient or constant)
+        if isinstance(mfc_odor_var, str):
+            omin, omax = mfc_params['odor_mfc_min'], mfc_params['odor_mfc_max']
+            is_gradient = omin!=omax
+            df0['strip_type'] = 'gradient' if is_gradient else 'constant'
+            # TODO: not accounting for gradient if >1 odor
     else:
+        # otherwise, only constant air (no odor)
         if verbose:
             print("... no odor changes detected in MFCs.")
 
-    # check strip type (gradient or constant)
-    is_gradient = len([c for c in mfc_vars0 if len(df0[c].unique())>2]) == 2    
-    df0['strip_type'] = 'gradient' if is_gradient else 'constant'
+ 
+    # TODO:  add percentage odor for constant strip
 
     # check LEDs
     if 'led_on' not in df0.columns:
         df0['led_on'] = False
         if 'led1_stpt' in df0.columns: #and 'led_on' not in df0.columns:
             datestr = int(df0['date'].unique())
-            if int(datestr) <= 20200720:
+            # 20200720: latest date for PAM_starved-flies (vertical_strip)
+            # 20200925: latest date for PAM_activateion_fed-flies
+            if int(datestr) <= 20200925:
                 df0['led_on'] = df0['led1_stpt']==1 
             else:
                 df0['led_on'] = df0['led1_stpt']==0
@@ -487,6 +589,8 @@ def correct_manual_conditions(df, experiment, logdf=None):
             df.loc[df['condition']=='fed_no_lights', 'condition'] = 'pamchr_fed_no_lights'
             df.loc[df['condition']=='fed_single', 'condition'] = 'pamchr_fed_single'
             df.loc[df['condition']=='fed_lights', 'condition'] = 'pamchr_fed_lights'
+        elif experiment=='constant_vs_gradient':
+            df.loc[df['condition']=='constant2', 'condition'] = 'constantodor2'
 
         #df['genotype'] = ''
 
@@ -884,13 +988,52 @@ def find_crossovers(df_, strip_width=50):
     return crossover_bouts
 
 
+def get_edgetracking_params(df, strip_width=50):
+    '''
+    Calculate chunks of tracking (split by crossover events).
+    Return dict of params for each found chunk. Len of keys is N crossovers.
+    '''
+    xovers = find_crossovers(df, strip_width=strip_width)
+    # add last bout
+    xovers.append(df['boutnum'].max()+1)
+    # cycle thru crossovers and count things
+    prev_xover = df['boutnum'].min() if df[df['instrip']]['boutnum'].min()==df['boutnum'].min() else df['boutnum'].min()
+    etparams={}
+    for xi, xover in enumerate(xovers):
+        curr_bouts = df[ (df['boutnum']<xover) & (df['boutnum']>prev_xover) ]
+        n_outside = len(curr_bouts[~curr_bouts['instrip']]['boutnum'].unique())
+        upwind_dists = curr_bouts.groupby('boutnum').apply(lambda x: x['ft_posy'].max() - x['ft_posy'].min())
+        upwind_dist = upwind_dists.sum()
+        # print(xi, prev_xover+1, n_outside, upwind_dists.sum())
+        prev_xover = xover
+        curr_params = {'n_outside_bouts': n_outside, 'upwind_dist': upwind_dist}
+        etparams.update({xi: curr_params})
+    return etparams
+
+
+def is_edgetracking(df, strip_width=50, \
+                        min_outside_bouts=3, min_upwind_dist=200):
+    '''
+    Set thresholds for diff params to define whether edgetracking or not.
+    Returns boolean.
+
+    '''
+    etparams = get_edgetracking_params(df, strip_width=50)
+    edgetracked=[]
+    for k, v in etparams.items():
+        et = v['n_outside_bouts'] > min_outside_bouts and v['upwind_dist'] > min_upwind_dist
+        edgetracked.append(et)
+
+    return any(edgetracked)
+    
+
 
 # ---------------------------------------------------------------------- 
 # Data processing
 # ----------------------------------------------------------------------
 def process_df(df, xvar='ft_posx', yvar='ft_posy', fliplr=True,
                 bout_thresh=0.5, switch_method='previous',
-                smooth=False, window_size=11, verbose=False):
+                smooth=False, fs=60, fc=7.5, verbose=False):
     '''
     Parse trajectory into bouts (filter too-short bouts).
     Calculate speed and distance between each point.
@@ -927,7 +1070,7 @@ def process_df(df, xvar='ft_posx', yvar='ft_posy', fliplr=True,
         df_ = calculate_distance(df_, xvar=xvar, yvar=yvar)
         # smooth?
         if smooth:
-            df_ = smooth_traces(df_, window_size=window_size, return_same=True)
+            df_ = smooth_traces(df_, fs=fs, fc=fc, return_same=True)
         df['bout_type'] = 'outstrip'
         df.loc[df['instrip'], 'bout_type'] = 'instrip' 
         dlist.append(df_)
@@ -1017,7 +1160,7 @@ def calculate_speed(df0, xvar='ft_posx', yvar='ft_posy'):
 
     return df0
 
-def calculate_speed2(df0, smooth=True, window_size=11, return_same=True):
+def calculate_speed2(df0, smooth=True, fs=60, fc=7.5, return_same=True):
     '''
     Calculate instantaneous speed from pos1 to pos2 using linalg.norm().
 
@@ -1037,7 +1180,7 @@ def calculate_speed2(df0, smooth=True, window_size=11, return_same=True):
     diff_df['cum_time'] = diff_df['time'].cumsum() # Get relative time  
 
     if smooth:
-        diff_df = smooth_traces_each(diff_df, varname='speed', window_size=window_size)
+        diff_df = smooth_traces_each(diff_df, varname='speed',fs=fs, fc=fc) 
 
     if return_same:
         df0['speed'] = diff_df['speed']
@@ -1204,19 +1347,27 @@ def filter_bouts_by_dur(df, bout_thresh=0.5, bout_varname='boutnum',
     return df
 
 
-def smooth_traces_each(df, varname='speed', window_size=11, return_same=True):
-    smooth_t = util.temporal_downsample(df[varname], window_size)
-
+def smooth_traces_each(df, varname='speed', fs=60, fc=7.5, return_same=True):
+    '''
+    low-pass filter with 5th order Butterworth filter using freq cut-off 7.5Hz
+    '''
+    #smooth_t = util.temporal_downsample(df[varname], 11) #window_size)
     #df[new_varname] = util.smooth_timecourse(df[varname], window_size)
 
+    # use butterworth
+    w = fc / (fs / 2)
+    b, a = signal.butter(5, w, 'low', analog=False) #, fs=60)
+    sx = signal.filtfilt(b, a, df[varname].values)
+    #sy1  = signal.filtfilt(b, a, df_['ft_posy'].values)
+ 
     if return_same:
         new_varname = 'smoothed_{}'.format(varname)
-        df[new_varname] = smooth_t
+        df[new_varname] = sx
         return df
     else:
-        return smooth_t
+        return sx
 
-def smooth_traces(df, xvar='ft_posx', yvar='ft_posy', window_size=13, return_same=True):
+def smooth_traces(df, xvar='ft_posx', yvar='ft_posy', fs=60, fc=7.5, return_same=True):
     '''
     Smooths x- and y-vars, which seems to be more accurate than interpolating over 2d.
 
@@ -1233,7 +1384,7 @@ def smooth_traces(df, xvar='ft_posx', yvar='ft_posy', window_size=13, return_sam
         _description_
     '''
     for v in [xvar, yvar]:
-        df = smooth_traces_each(df, varname=v, window_size=window_size, return_same=True)
+        df = smooth_traces_each(df, varname=v, fs=fs, fc=fc, return_same=True)
 
     return df
 
@@ -1324,7 +1475,7 @@ def get_odor_grid(df, strip_width=10, strip_sep=200, use_crossings=True,
     return odor_grid, odor_flag
 
 
-def find_borders(df, strip_width = 10, strip_spacing = 200):
+def create_strip_xcoords(df, strip_width = 10, strip_spacing = 200):
     '''from andy'''
     from scipy import signal as sg
     x = df.ft_posx
@@ -2513,8 +2664,8 @@ def plot_trajectory(df0, odor_bounds=[], ax=None,
         hue_varname='instrip', palette={True: 'r', False: 'w'}, hue_norm=None,
         start_at_odor = False, zero_odor_start = False, 
         odor_lc='lightgray', odor_lw=0.5, title='',
-        markersize=0.5, alpha=1.0, 
-        center=False, xlim=200, plot_legend=True, plot_start=True):
+        markersize=0.5, alpha=1.0, legend_loc='upper left',
+        center=False, xlim=200, plot_legend=True, plot_start=True, start_size=3):
 
     # ---------------------------------------------------------------------
     if ax is None: 
@@ -2554,9 +2705,9 @@ def plot_trajectory(df0, odor_bounds=[], ax=None,
             ax.axhline(y=odor_start_ix, color='w', lw=0.5, linestyle=':')
     # trial start
     if plot_start:
-        ax.plot(df.loc[start_ix]['ft_posx'], df.loc[start_ix]['ft_posy'], 'g*')
-        ax.plot(df.iloc[-1]['ft_posx'], df.iloc[-1]['ft_posy'], 'b*') 
-    ax.legend(bbox_to_anchor=(1,1), loc='upper left', title=hue_varname, frameon=False)
+        ax.plot(df.loc[start_ix]['ft_posx'], df.loc[start_ix]['ft_posy'], 'g*', markersize=start_size)
+        ax.plot(df.iloc[-1]['ft_posx'], df.iloc[-1]['ft_posy'], 'b*', markersize=start_size) 
+    ax.legend(bbox_to_anchor=(1,1), loc=legend_loc, title=hue_varname, frameon=False)
     ax.set_title(title)
     xmax=500
     if center:
