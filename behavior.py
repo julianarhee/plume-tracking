@@ -301,7 +301,10 @@ def load_dataframe(fpath, verbose=False, experiment=None,
 
     '''
     exp_config = load_experiment_config(fpath) 
-    acquisition_rate = exp_config['experiment']['acquisition_rate']
+    if 'acquisition_rate' in exp_config['experiment'].keys():
+        acquisition_rate = exp_config['experiment']['acquisition_rate']
+    else:
+        acquisition_rate = 60.
     # read .log as dataframe 
     df0 = pd.read_csv(fpath, encoding='latin' )#, sep=",", skiprows=[1], header=0, 
     if df0['ft_frame'].iloc[0] == 0:
