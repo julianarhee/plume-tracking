@@ -189,6 +189,9 @@ def load_experiment_config(fpath):
     parentdir, fname = os.path.split(fpath)
     fbase = os.path.splitext(fname)[0]
     fconfig = os.path.join(parentdir, '{}_config.json'.format(fbase))
+    if not os.path.exists(fconfig):
+        return None
+
     with open(fconfig, 'r') as f:
         exp_config = json.load(f)
 
@@ -301,7 +304,7 @@ def load_dataframe(fpath, verbose=False, experiment=None,
 
     '''
     exp_config = load_experiment_config(fpath) 
-    if 'acquisition_rate' in exp_config['experiment'].keys():
+    if exp_config is not None and 'acquisition_rate' in exp_config['experiment'].keys():
         acquisition_rate = exp_config['experiment']['acquisition_rate']
     else:
         acquisition_rate = 60.
