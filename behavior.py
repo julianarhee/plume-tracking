@@ -283,9 +283,10 @@ def get_mfc_params(df):
 
     return mfc_dict
 
+
 def load_dataframe(fpath, verbose=False, experiment=None, 
                     parse_filename=True, savedir=None, remove_invalid=True, 
-                    plot_errors=False, fliplr=True):
+                    plot_errors=False, fliplr=True, is_odor=True):
     '''
     Read raw .log file from behavior and return formatted dataframe.
     Assumes MFC for odor is either 'mfc2_stpt' or 'mfc3_stpt'.
@@ -345,29 +346,30 @@ def load_dataframe(fpath, verbose=False, experiment=None,
 
     df0['odor_on'] = False  
     df0['strip_type'] = 'constant'
-    mfc_params = get_mfc_params(df0)
-    if mfc_params['odor_mfc'] is not None:
-        # determine which mfc is odor (as opposed to air, air is usual mfc1)
-        mfc_odor_var = mfc_params['odor_mfc'] 
-        if isinstance(mfc_odor_var, str):
-            df0.loc[df0[mfc_odor_var]>0, 'odor_on'] = True
-        else:
-            # can return several mfc vars (if >1 odor, or empty)
-            for ovar in mfc_odor_var:
+   
+    if is_odor:
+        mfc_params = get_mfc_params(df0)
+        if mfc_params['odor_mfc'] is not None:
+            # determine which mfc is odor (as opposed to air, air is usual mfc1)
+            mfc_odor_var = mfc_params['odor_mfc'] 
+            if isinstance(mfc_odor_var, str):
                 df0.loc[df0[mfc_odor_var]>0, 'odor_on'] = True
-        # check strip type (gradient or constant)
-        if isinstance(mfc_odor_var, str):
-            omin, omax = mfc_params['odor_mfc_min'], mfc_params['odor_mfc_max']
-            is_gradient = omin!=omax
-            df0['strip_type'] = 'gradient' if is_gradient else 'constant'
-            # TODO: not accounting for gradient if >1 odor
-    else:
-        # otherwise, only constant air (no odor)
-        if verbose:
-            print("... no odor changes detected in MFCs.")
-
- 
-    # TODO:  add percentage odor for constant strip
+            else:
+                # can return several mfc vars (if >1 odor, or empty)
+                for ovar in mfc_odor_var:
+                    df0.loc[df0[mfc_odor_var]>0, 'odor_on'] = True
+            # check strip type (gradient or constant)
+            if isinstance(mfc_odor_var, str):
+                omin, omax = mfc_params['odor_mfc_min'], mfc_params['odor_mfc_max']
+                is_gradient = omin!=omax
+                df0['strip_type'] = 'gradient' if is_gradient else 'constant'
+                # TODO: not accounting for gradient if >1 odor
+        else:
+            # otherwise, only constant air (no odor)
+            if verbose:
+                print("... no odor changes detected in MFCs.")
+     
+        # TODO:  add percentage odor for constant strip
 
     # check LEDs
     if 'led_on' not in df0.columns:
@@ -397,8 +399,10 @@ def load_dataframe(fpath, verbose=False, experiment=None,
 
     if figpath is None and plot_errors is True:
         print("[warning]: Provide savedir to save errors fig")
-    df0, ft_flag = check_ft_skips(df0, plot=plot_errors, remove_invalid=remove_invalid,
-                    figpath=figpath, verbose=verbose, acquisition_rate=acquisition_rate)
+    df0, ft_flag = check_ft_skips(df0, plot=plot_errors, 
+                        remove_invalid=remove_invalid,
+                        figpath=figpath, verbose=verbose, 
+                        acquisition_rate=acquisition_rate)
     if ft_flag:
         logging.warning("--> found bad skips in FTs, check: {}".format(fname))
 
@@ -1037,7 +1041,7 @@ def is_edgetracking(df, strip_width=50, \
 # ---------------------------------------------------------------------- 
 # Data processing
 # ----------------------------------------------------------------------
-def process_df(df, xvar='ft_posx', yvar='ft_posy', fliplr=True,
+def process_df(df, xvar='ft_posx', yvar='ft_posy', fliplr=False,
                 bout_thresh=0.5, switch_method='previous',
                 smooth=False, fs=60, fc=7.5, verbose=False):
     '''
@@ -1050,6 +1054,7 @@ def process_df(df, xvar='ft_posx', yvar='ft_posy', fliplr=True,
     Keyword Arguments:
         xvar -- _description_ (default: {'ft_posx'})
         yvar -- _description_ (default: {'ft_posy'})
+        fliplr (bool): should be False, since flipped during load_dataframe()
         bout_thresh (float): min. duration for bout (default: {0.5})
         smooth (bool): smooth traj (default: {False})
         switch_method (str): assign too-short bouts to previous or just reverse (default: 'previous')
@@ -2432,6 +2437,10 @@ def visualize_calculation_heading_after_stop(b_, theta_range=(-np.pi, np.pi),
     pl.subplots_adjust(wspace=0.5, left=0.15, top=0.8, right=0.85)
 
     return fig
+
+# temp
+
+
 
 # --------------------------------------------------------------------
 # data processing
