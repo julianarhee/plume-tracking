@@ -17,6 +17,7 @@ https://github.com/rutalaboratory/edge-tracking
 
 '''
 import pickle
+import _pickle as pkl
 import os.path
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -149,7 +150,18 @@ def get_info_from_gsheet(experiment):
     df = gsheet_to_dataframe(SHEET_ID)
     return df
 
+def load_gdrive_df(fpath):
     
+    with open(fpath, 'rb') as f:
+        logdf = pkl.load(f)
+
+    return logdf
+   
+def save_gdrive_df(logdf, fpath):
+
+    with open(fpath, 'wb') as f:
+        pkl.dump(logdf, f)
+ 
 def main():
     SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
     SPREADSHEET_ID = '1K_SkaT3JUA2Ik8uiwB6kJMwHnd935bZvZB4If0zh8rY'
