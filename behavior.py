@@ -2644,7 +2644,8 @@ def normalize_position(b_):
 def plot_trajectory_from_file(fpath, parse_filename=False, 
             fliplr=True, remove_invalid=True, plot_errors=False,
             strip_width=10, strip_sep=200, ax=None,  
-            zero_odor_start=False, start_at_odor=False, markersize=0.5):
+            zero_odor_start=False, start_at_odor=False, markersize=0.5,
+            hue_varname='instrip', palette={True: 'r', False: 'w'}):
     # load and process the csv data  
     df0 = load_dataframe(fpath, verbose=False, #cond=None, 
                 parse_filename=False, fliplr=fliplr, 
@@ -2670,7 +2671,7 @@ def plot_trajectory_from_file(fpath, parse_filename=False,
     title = os.path.splitext(os.path.split(fpath)[-1])[0]
     ax = plot_trajectory(df0, odor_bounds=strip_borders, title=title, ax=ax,
             start_at_odor=start_at_odor, zero_odor_start=zero_odor_start,
-            markersize=markersize)
+            markersize=markersize, hue_varname=hue_varname, palette=palette)
 
     return ax
 
