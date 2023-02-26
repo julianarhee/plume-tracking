@@ -84,6 +84,8 @@ def main():
 
     parser.add_argument('-m', '--markersize', default=0.5, type=float,
         action='store', help='markersize (default=0.5)')
+    parser.add_argument('-H', '--hue_varname', default='instrip',
+        action='store', help='hue variable (default=instrip)')
 
     args = parser.parse_args()
     rootdir = args.rootdir
@@ -103,20 +105,60 @@ def main():
     remove_invalid = not(args.keep_all_frames)
     plot_errors = args.keep_all_frames # plot errors of keeping all
 
+    hue_varname = args.hue_varname
+
+
     fpath = select_logfile(experiment, datestr, user_input=user_input, rootdir=rootdir)
     #fig, ax = pl.subplots()
-    ax = butil.plot_trajectory_from_file(fpath, parse_filename=parse_filename, 
-                strip_width=strip_width, strip_sep=strip_sep, ax=None,
-                start_at_odor=start_at_odor, zero_odor_start=zero_odor_start,
-                markersize=markersize, fliplr=fliplr, 
+
+    # load and process the csv data  
+    df0 = butil.load_dataframe(fpath, verbose=False, #cond=None, 
+                parse_filename=parse_filename, fliplr=fliplr, 
                 remove_invalid=remove_invalid, plot_errors=plot_errors)
+    fly_id=None
+    if parse_filename:
+        # try to parse experiment details from the filename
+        exp, datestr, fid, cond = parse_info_from_filename(fpath)
+        print('Experiment: {}{}Fly ID: {}{}Condition: {}'.format(exp, '\n', fid, '\n', cond))
+        fly_id = df0['fly_id'].unique()[0]
+    else:
+        fly_id = os.path.split(fpath)[-1]
+        df0['fly_id'] = fly_id
+
+    df0 = butil.process_df(df0)
+    strip_borders = butil.find_strip_borders(df0, 
+                            strip_width=strip_width, strip_sep=strip_sep, 
+                            entry_ix=None)
+    title = os.path.splitext(os.path.split(fpath)[-1])[0]
+
+    if hue_varname == 'odor_percent':
+        values = df0[hue_varname].unique()
+        colors = sns.color_palette('colorblind', n_colors=len(values))
+        palette = dict((k, v) for k, v in zip(values, colors))
+    else:
+        palette = {True: 'r', False: 'w'} #hue_varname=='instrip'
+
+
+    fig, ax = pl.subplots()
+
+    ax = butil.plot_trajectory(df0, odor_bounds=strip_borders, title=title, ax=ax,
+            start_at_odor=start_at_odor, zero_odor_start=zero_odor_start,
+            markersize=markersize, hue_varname=hue_varname, palette=palette)
+
+#    ax = butil.plot_trajectory_from_file(fpath, parse_filename=parse_filename, 
+#                strip_width=strip_width, strip_sep=strip_sep, ax=None,
+#                start_at_odor=start_at_odor, zero_odor_start=zero_odor_start,
+#                markersize=markersize, fliplr=fliplr, 
+#                remove_invalid=remove_invalid, plot_errors=plot_errors,
+#                hue_varname=hue_varname, palette=palette)
+
     ax.set_box_aspect(2.0)
     # label figure and save
     fig_id = '{}: {}'.format(experiment, datestr)
     util.label_figure(ax.figure, fig_id)
 
     if save:
-        save_dir = os.path.join(rootdir, 'figures')
+        save_dir = os.path.join(rootdir.split('/logfiles')[0], 'figures')
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
         _, fbase = os.path.split(fpath)
