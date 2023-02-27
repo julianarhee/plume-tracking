@@ -829,23 +829,25 @@ def check_entryside_and_flip(df_, strip_width=50, strip_sep=500, odor_dict=None,
             border_flip1, _ = util.fliplr_coordinates(oparams['odor_boundary'][0][0], 0) 
             border_flip2, _ = util.fliplr_coordinates(oparams['odor_boundary'][0][1], 0)
             df_copy.loc[tmpdf.index, 'flipped'] = True
+
+            # flip headigs
+            for heading_var in ['ft_heading', 'heading']:
+                if heading_var in df_copy.columns:
+                    df_copy['{}_og'.format(heading_var)] = df_[heading_var].values
+                    df_copy[heading_var] = df_[heading_var].values
+                    tmpdf = df_copy[df_copy['flipped']]['{}_og'.format(heading_var)]
+
+                    #df_copy['{}_og'.format(heading_var)] = df_copy[heading_var].values
+                    #vals = -1*df_copy[df_copy['flipped']]['{}_og'.format(heading_var)].values
+                    #df_copy.loc[df_copy['flipped'], heading_var] = vals
+                    vals = -1*tmpdf.values
+                    df_copy.loc[tmpdf.index, heading_var] = vals
+
         else:
-            border_flip1, border_flip2 = oparams['odor_boundary'][0]
+            print("Not flipping borders")
+            border_flip1, border_flip2 = list(odor_dict.values())[0] #oparams['odor_boundary'][0]
         
         new_borders.update({'c{}'.format(entry_ix): (border_flip1, border_flip2)})
-
-    # flip headigs
-    for heading_var in ['ft_heading', 'heading']:
-        if heading_var in df_copy.columns:
-            df_copy['{}_og'.format(heading_var)] = df_[heading_var].values
-            df_copy[heading_var] = df_[heading_var].values
-            tmpdf = df_copy[df_copy['flipped']]['{}_og'.format(heading_var)]
-
-            #df_copy['{}_og'.format(heading_var)] = df_copy[heading_var].values
-            #vals = -1*df_copy[df_copy['flipped']]['{}_og'.format(heading_var)].values
-            #df_copy.loc[df_copy['flipped'], heading_var] = vals
-            vals = -1*tmpdf.values
-            df_copy.loc[tmpdf.index, heading_var] = vals
 
     return df_copy, new_borders
 
@@ -2529,7 +2531,7 @@ def mean_dir_after_stop(df, heading_var='ft_heading',theta_range=(-np.pi, np.pi)
 
 def get_bout_metrics(b_, heading_vars=['ft_heading', 'heading'],
                     group_vars=['fly_id', 'condition', 'boutnum', 'trial_id'],
-                    theta_range=(-np.pi, np.pi)):
+                    theta_range=(-np.pi, np.pi), xvar='ft_posx', yvar='ft_posy'):
     '''
     Calculate metrics for 1 bout. 
     To do for all bouts: 
@@ -2555,13 +2557,20 @@ def get_bout_metrics(b_, heading_vars=['ft_heading', 'heading'],
     lin_vars = ['speed', 'upwind_speed', 'crosswind_speed']
     lin_metrics = b_[lin_vars].mean() #.reset_index(drop=True)
 
+    coords = b_[[xvar, yvar]].values
+    path_length = util.path_length(coords) #b_['euclid_dist'].sum() -  b_['euclid_dist'].iloc[0],
+    path_length_x = util.path_length(coords, axis='x')
+    path_length_y = util.path_length(coords, axis='y')
+ 
     mdict = {
         'duration': b_['time'].iloc[-1] - b_['time'].iloc[0],
         'upwind_dist_range': b_['ft_posy'].max() - b_['ft_posy'].min(),
         'upwind_dist_firstlast': b_['ft_posy'].iloc[-1] - b_['ft_posy'].iloc[0],
         'crosswind_dist_range': b_['ft_posx'].max() - b_['ft_posx'].min(),
         'crosswind_dist_firstlast': b_['ft_posx'].iloc[-1] - b_['ft_posx'].iloc[0],
-        'path_length': b_['euclid_dist'].sum() -  b_['euclid_dist'].iloc[0],
+        'path_length': path_length,
+        'path_length_x': path_length_x,
+        'path_length_y': path_length_y,
         #'average_heading': sts.circmean(b_['ft_heading'], low=theta_range[0], high=theta_range[1]),
         'rel_time': b_['rel_time'].iloc[0],
         'n_frames': len(b_['ft_frame'].unique())
@@ -2657,7 +2666,8 @@ def normalize_position(b_):
 def vertical_scalebar(ax, leg_xpos=0, leg_ypos=0, leg_scale=100):
     #leg_xpos=0; leg_ypos=round(df0.loc[odor_ix]['ft_posy']); leg_scale=100
     ax.plot([leg_xpos, leg_xpos], [leg_ypos, leg_ypos+leg_scale], 'w', lw=2)
-    ax.text(leg_xpos-abs(leg_ypos)*2, leg_ypos+(leg_scale/2), '{} mm'.format(leg_scale), fontsize=12)
+    
+    ax.text(leg_xpos-5, leg_ypos+(leg_scale/2), '{} mm'.format(leg_scale), fontsize=12, horizontalalignment='right')
     #ax.axis('off')
     
 
