@@ -117,7 +117,7 @@ def path_length(traj, axis='both'): #df, xvar='ft_posx', yvar='ft_posy'):
     if axis=='x':
         pl = np.sqrt(np.diff(traj[:, 0])**2).sum()
     elif axis=='y':
-        pl = np.sqrt(np.diff(traj[:, 1]**2)).sum()
+        pl = np.sqrt(np.diff(traj[:, 1])**2).sum()
     else:
         #dists = np.linalg.norm(df[[xvar, yvar]].diff(axis=0).dropna(), axis=1)
         pl = np.linalg.norm(np.diff(traj, axis=0), axis=1).sum()
