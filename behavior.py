@@ -779,7 +779,7 @@ def get_odor_params(df, strip_width=50, strip_sep=200, get_all_borders=True,
 
 
 
-def check_entryside_and_flip(df_, strip_width=50, odor_dict=None, verbose=False):
+def check_entryside_and_flip(df_, strip_width=50, strip_sep=500, odor_dict=None, verbose=False):
     '''
     Check if animal enters on corridor's left or right edge. Flip so that animal 
     enters on corridor's RIGHT edge (animal's left side). 
@@ -800,7 +800,8 @@ def check_entryside_and_flip(df_, strip_width=50, odor_dict=None, verbose=False)
     new_borders={}
     in_odor = odor_dict is not None
     if odor_dict is None:
-        odor_dict, in_odor = get_odor_grid(df_, strip_width=strip_width)
+        odor_dict, in_odor = get_odor_grid(df_, strip_width=strip_width,
+                                    strip_sep=strip_sep)
     if not in_odor:
         return 
     entry_ixs = [int(k[1:]) for k, v in odor_dict.items()]
@@ -1012,7 +1013,7 @@ def get_edgetracking_params(df, strip_width=50):
     for xi, xover in enumerate(xovers):
         curr_bouts = df[ (df['boutnum']<xover) & (df['boutnum']>prev_xover) ]
         n_outside = len(curr_bouts[~curr_bouts['instrip']]['boutnum'].unique())
-        upwind_dists = curr_bouts.groupby('boutnum').apply(lambda x: x['ft_posy'].max() - x['ft_posy'].min())
+        upwind_dists = curr_bouts.groupby('boutnum', group_keys=True).apply(lambda x: x['ft_posy'].max() - x['ft_posy'].min())
         upwind_dist = upwind_dists.sum()
         # print(xi, prev_xover+1, n_outside, upwind_dists.sum())
         prev_xover = xover
@@ -1477,10 +1478,14 @@ def get_odor_grid(df, strip_width=10, strip_sep=200, use_crossings=True,
         odor_grid = {'c0': (curr_odor_xmin, curr_odor_xmax)}
         odor_flag = False
     else:
-        odor_grid = find_odor_grid(df, 
-                        strip_width=strip_width, strip_sep=strip_sep)
-        odor_grid = check_odor_grid(df, odor_grid, strip_width=strip_width, strip_sep=strip_sep, 
-                        use_crossings=use_crossings, use_mean=use_mean, verbose=verbose)
+        #odor_grid = find_odor_grid(df, 
+        #                strip_width=strip_width, strip_sep=strip_sep)
+        odor_grid = create_strip_xcoords(df, strip_width=strip_width,
+                        strip_spacing=strip_sep)
+        odor_grid = check_odor_grid(df, odor_grid, strip_width=strip_width, 
+                        strip_sep=strip_sep, 
+                        use_crossings=use_crossings, 
+                        use_mean=use_mean, verbose=verbose)
         odor_flag = True
 
     return odor_grid, odor_flag
@@ -1504,10 +1509,19 @@ def create_strip_xcoords(df, strip_width = 10, strip_spacing = 200):
     #all_x_borders = [np.array([x_borders[i], x_borders[i]]) for i, _ in enumerate(x_borders)]
     #all_y_borders = [y_borders for i,_ in enumerate(x_borders)]
     #all_t_borders = [t_borders for i,_ in enumerate(x_borders)]
-    return x_borders #all_x_borders, all_y_borders
+
+    it = iter(x_borders)
+    obounds = [tuple([x, next(it)]) for x in it]
+    
+    ogrid = {}
+    for ob in obounds:
+        ix = df[df['ft_posx']>=ob[0]].iloc[0].name
+        ogrid.update({'c{}'.format(ix): ob})
+    
+    return ogrid #x_borders #all_x_borders, all_y_borders
 
  
-def find_odor_grid(df, strip_width=10, strip_sep=200, plot=True): 
+def find_odor_grid_x(df, strip_width=10, strip_sep=200, plot=True): 
     '''
     Finds the odor boundaries based on odor width and grid separation
 
@@ -2638,8 +2652,14 @@ def normalize_position(b_):
 
 
 # ----------------------------------------------------------------------
-# Visualization
+# Plotting and Visualization
 # ----------------------------------------------------------------------
+def vertical_scalebar(ax, leg_xpos=0, leg_ypos=0, leg_scale=100):
+    #leg_xpos=0; leg_ypos=round(df0.loc[odor_ix]['ft_posy']); leg_scale=100
+    ax.plot([leg_xpos, leg_xpos], [leg_ypos, leg_ypos+leg_scale], 'w', lw=2)
+    ax.text(leg_xpos-abs(leg_ypos)*2, leg_ypos+(leg_scale/2), '{} mm'.format(leg_scale), fontsize=12)
+    #ax.axis('off')
+    
 
 def plot_trajectory_from_file(fpath, parse_filename=False, 
             fliplr=True, remove_invalid=True, plot_errors=False,
