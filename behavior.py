@@ -1018,12 +1018,13 @@ def calculate_et_params(curr_bouts):
     #print("Aggregate:", aggregate_upwind_dist)
     upwind_instrip_dists = curr_bouts[curr_bouts['instrip']].groupby('boutnum', group_keys=True).apply(lambda x: x['ft_posy'].max() - x['ft_posy'].min())
 
-    max_instrip_upwind_dist = upwind_instrip_dists.max()
-    sum_instrip_upwind_dist = upwind_instrip_dists.sum()
-    max_instrip_upwind_percent = max_instrip_upwind_dist / aggregate_upwind_dist if aggregate_upwind_dist>0 else 0
-
     global_upwind_dist = curr_bouts['ft_posy'].max() - curr_bouts['ft_posy'].min()
     total_instrip_upwind_dist = curr_bouts[curr_bouts['instrip']]['ft_posy'].max() - curr_bouts[curr_bouts['instrip']]['ft_posy'].min()
+
+    max_instrip_upwind_dist = upwind_instrip_dists.max()
+    sum_instrip_upwind_dist = upwind_instrip_dists.sum()
+    max_instrip_upwind_percent = max_instrip_upwind_dist / global_upwind_dist #aggregate_upwind_dist if aggregate_upwind_dist>0 else 0
+
     curr_params = {
             'n_outside_bouts': n_outside, 
             'aggregate_upwind_dist': aggregate_upwind_dist, 
@@ -1050,36 +1051,30 @@ def get_edgetracking_params(df, strip_width=50, split_at_crossovers=True):
         # cycle thru crossovers and count things
         prev_xover = df['boutnum'].min() if df[df['instrip']]['boutnum'].min()==df['boutnum'].min() else df['boutnum'].min()
 
+        # TO DO: test this again
         last_outstrip_bout = df[~df['instrip']]['boutnum'].max()
         skip_last_bout = df['boutnum'].max() == last_outstrip_bout
         max_boutnum = last_outstrip_bout-1 if skip_last_bout else df['boutnum'].max()
 
         for xi, xover in enumerate(xovers):
             curr_bouts = df[ (df['boutnum']<xover) & (df['boutnum']>prev_xover) \
-                            & (df['boutnum']>=max_boutnum)]
-#            first_instrip_bout = curr_bouts[curr_bouts['instrip']]['boutnum'].min() 
-#            n_outside = len(curr_bouts[(~curr_bouts['instrip']) \
-#                                     & (curr_bouts['boutnum']>first_instrip_bout)]['boutnum'].unique())
-#            upwind_dists = curr_bouts.groupby('boutnum', group_keys=True).apply(lambda x: x['ft_posy'].max() - x['ft_posy'].min())
-#            upwind_dist = upwind_dists.sum()
-#            # get max upwind dist
-#            upwind_instrip_dists = curr_bouts[curr_bouts['instrip']].groupby('boutnum', group_keys=True).apply(lambda x: x['ft_posy'].max() - x['ft_posy'].min())
-#            max_instrip_upwind_dist = upwind_instrip_dists.max()
-#            sum_instrip_upwind_dist = upwind_instrip_dists.sum()
-#            global_upwind_dist = curr_bouts['ft_posy'].max() - curr_bouts['ft_posy'].min()
-#
+                            & (df['boutnum']<=max_boutnum)]
             curr_params = calculate_et_params(curr_bouts)
 
             # print(xi, prev_xover+1, n_outside, upwind_dists.sum())
             prev_xover = xover
             etparams.update({xi: curr_params})
     else:
-        last_outstrip_bout = df[~df['instrip']]['boutnum'].max()
-        skip_last_bout = df['boutnum'].max() == last_outstrip_bout
-        max_boutnum = last_outstrip_bout-1 if skip_last_bout else df['boutnum'].max()
-        curr_bouts = df[df['boutnum']<=max_boutnum].copy()
+        first_instrip_bout = df[df['instrip']]['boutnum'].min() + 1
+        last_instrip_bout = df[df['instrip']]['boutnum'].max()
+        #last_outstrip_bout = df[~df['instrip']]['boutnum'].max()
+        #skip_last_bout = df['boutnum'].max() == last_outstrip_bout
+        #max_boutnum = last_outstrip_bout-1 if skip_last_bout else df['boutnum'].max()
+        curr_bouts = df[(df['boutnum']<=last_instrip_bout) 
+                        & (df['boutnum']>=first_instrip_bout)].copy()
 
         curr_params = calculate_et_params(curr_bouts)
+        #print(last_instrip_bout, curr_params)
         curr_params.update( {'crossover_bouts': xovers}) 
         etparams.update({0: curr_params})
         #etparams = curr_params
@@ -1099,7 +1094,7 @@ def is_edgetracking(df, etparams=None,
     Params:
         *'global_upwind_dist': final ypos max-min (whole trajectory) -- upwind walking
         'total_instrip_upwind_dist': max-min of ypos *instrip*
-        *'max_instrip_upwind_dist': largest continuous chunk of upwind *instrip* -- leaving strip
+        *'max_instrip_upwind_percent': largest continuous chunk of upwind *instrip* -- leaving strip
         #*'min_sum_instrip_upwind_dist': at least this min upwind dist *instrip* -- actually spending time in strip
 
         'upwind_dist': cumulative sum of each bout (all bouts)
@@ -1109,8 +1104,8 @@ def is_edgetracking(df, etparams=None,
     Returns boolean.
 
     '''
-    if etparams is None: 
-        etparams = get_edgetracking_params(df, strip_width=strip_width, split_at_crossovers=split_at_crossovers)
+    #if etparams is None: 
+    etparams = get_edgetracking_params(df, strip_width=strip_width, split_at_crossovers=split_at_crossovers)
 
 #        max_instrip_upwind_percent = 0.8 #250 #250
 #        min_sum_instrip_upwind_dist = 250
@@ -1123,10 +1118,9 @@ def is_edgetracking(df, etparams=None,
         #print("curr et key:", k)
 
         curr_pass_key = {
-            'pass_n_outside_bouts': v['n_outside_bouts'] > min_outside_bouts,
+            'pass_n_outside_bouts': v['n_outside_bouts'] >= min_outside_bouts,
             'pass_global_upwind_dist': v['global_upwind_dist'] >= min_global_upwind_dist,
             #'pass_sum_instrip_upwind_dist': v['sum_instrip_upwind_dist'] >= min_sum_instrip_upwind_dist,
-            'pass_n_outside_bouts': v['n_outside_bouts'] > min_outside_bouts,
             'pass_aggregate_upwind_dist': v['aggregate_upwind_dist'] > min_upwind_dist,
             'pass_instrip_upwind_percent': v['max_instrip_upwind_percent'] <= max_instrip_upwind_percent
             #'pass_max_crossover': len(xovers) < max_crossovers
@@ -1143,8 +1137,9 @@ def is_edgetracking(df, etparams=None,
         edgetracked.append(et)
         passkey[k] = curr_pass_key
 
+    
     if return_key:
-        return any(edgetracked), passkey
+        return any(edgetracked), etparams, passkey
     else: 
         return any(edgetracked)
     
@@ -1593,6 +1588,9 @@ def get_odor_grid(df, strip_width=10, strip_sep=200, use_crossings=True,
         #                strip_width=strip_width, strip_sep=strip_sep)
         odor_grid = create_strip_xcoords(df, strip_width=strip_width,
                         strip_spacing=strip_sep)
+        if odor_grid is None:
+            return None, False
+
         odor_grid = check_odor_grid(df, odor_grid, strip_width=strip_width, 
                         strip_sep=strip_sep, 
                         use_crossings=use_crossings, 
@@ -1608,6 +1606,9 @@ def create_strip_xcoords(df, strip_width = 10, strip_spacing = 200):
     x = df.ft_posx
     y = df.ft_posy
     mfc_var = get_odor_mfc(df)
+    if mfc_var == ():
+        print(" NO ODOR ")
+        return None
     x_idx = df.index[df[mfc_var]>0.001].tolist()[0]
     x0 = df.ft_posx[x_idx] # First point where the odor turn on
     duty = strip_width/(strip_width+strip_spacing)
