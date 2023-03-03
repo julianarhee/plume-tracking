@@ -472,7 +472,21 @@ def plot_vector_path(ax, x, y, c, scale=1.5, width=0.005, headwidth=5, pivot='ta
 
 
 def custom_legend(labels, colors, use_line=True, lw=4, markersize=10):
+    '''
+    Returns legend handles
 
+    Arguments:
+        labels -- _description_
+        colors -- _description_
+
+    Keyword Arguments:
+        use_line -- _description_ (default: {True})
+        lw -- _description_ (default: {4})
+        markersize -- _description_ (default: {10})
+
+    Returns:
+        _description_
+    '''
     if use_line:
         legh = [mpl.lines.Line2D([0], [0], color=c, label=l, lw=lw) for c, l in zip(colors, labels)]
     else:
