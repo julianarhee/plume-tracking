@@ -52,9 +52,17 @@ def load_df(fpath):
 
     odor_ix = df0_full[df0_full['instrip']].iloc[0].name
 
-    odor_bounds = butil.find_strip_borders(df0_full, entry_ix=odor_ix,
-                                           strip_width=strip_width, strip_sep=strip_sep)
-    
+    try:
+        odor_bounds = butil.find_strip_borders(df0_full, entry_ix=odor_ix,
+                                strip_width=strip_width, strip_sep=strip_sep)
+    except StopIteration:
+        strip_sep=1000
+        try:
+            odor_bounds = butil.find_strip_borders(df0_full, entry_ix=odor_ix,
+                                strip_width=strip_width, strip_sep=strip_sep)
+        except StopIteration:
+            return None, None
+
     oparams = {
         'odor_ix': odor_ix,
         'odor_bounds': odor_bounds,
@@ -63,7 +71,16 @@ def load_df(fpath):
     }
     return df0_full, oparams#odor_ix, odor_bounds, strip_width, strip_sep
 
-def find_et_bouts(df0, odor_bounds, strip_width=50, strip_sep=500):
+def find_et_bouts(df0, odor_bounds, strip_width=50, strip_sep=1000, 
+                   max_instrip_upwind_percent=0.4, 
+                   max_crossovers=2, min_outside_bouts=5, 
+                   min_global_upwind_dist=500):
+
+    #max_instrip_upwind_percent = 0.4 #250 #250
+    #min_global_upwind_dist = 300
+    #max_crossovers=2
+    #min_outside_bouts=5
+
     et_bouts = {}
     et_boutstats = {}
     et_passkey = {}
@@ -83,6 +100,7 @@ def find_et_bouts(df0, odor_bounds, strip_width=50, strip_sep=500):
             df_ = df0.copy()
             start_bout = df0[df0['instrip']].iloc[0]['boutnum'].min() + 1 # start from 1st outbout
             end_bout = df0[df0['instrip']]['boutnum'].max()
+        #print("checking bouts for ET: ", start_bout, end_bout)
         if df_.shape[0]==0:
             continue
         #print( "{}: starts instrip {}".format(oi, df_['instrip'].iloc[0]))
@@ -93,42 +111,28 @@ def find_et_bouts(df0, odor_bounds, strip_width=50, strip_sep=500):
         measure_bout = df_[(df_['boutnum']>=start_bout) & (df_['boutnum']<=end_bout)].copy()
         entry_ix = df_[df_['ft_posx']>ob[0]].iloc[0].name
         #et_params = butil.calculate_et_params(measure_bout)
-        etparams = butil.get_edgetracking_params(measure_bout, strip_width=strip_width, 
-                                                 split_at_crossovers=False)
-        etparams[0].update({'key': 'c{}'.format(entry_ix)})
+        #etparams = butil.get_edgetracking_params(measure_bout, strip_width=strip_width, 
+        #                                         split_at_crossovers=False)
+        #print(etparams)
         
         #upwind_dist = measure_bout['upwind_dist'].sum()
-        n_bouts = len(measure_bout['boutnum'].unique())
-        et_boutstats.update({
-            oi: etparams
-        })
-#            {
-#                'upwind_dist': upwind_dist,
-#                'n_bouts': n_bouts,
-#                'key': 'c{}'.format(entry_ix)
-#            }
-# })
+        #n_bouts = len(measure_bout['boutnum'].unique())
+
         # check if ET
-       # is_et = butil.is_edgetracking(df_, strip_width=strip_width, \
-       #                     min_outside_bouts=3, min_upwind_dist=200)
-
-        max_instrip_upwind_percent = 0.8 #250 #250
-        #min_sum_instrip_upwind_dist = 250
-        min_global_upwind_dist = 500
-        max_crossovers=3
-
-        is_et, curr_pass_key = butil.is_edgetracking(measure_bout, 
-                            etparams=etparams,
-                            strip_width=strip_width, 
+        is_et, etparams, curr_pass_key = butil.is_edgetracking(measure_bout, 
                             return_key=True,
+                            strip_width=strip_width, 
                             split_at_crossovers=False,
-                            min_outside_bouts=4, 
+                            min_outside_bouts=min_outside_bouts,
                             max_crossovers=max_crossovers,
-                            min_global_upwind_dist=min_global_upwind_dist, 
+                            #min_global_upwind_dist=min_global_upwind_dist, 
                             max_instrip_upwind_percent=max_instrip_upwind_percent
         )
-                            #min_sum_instrip_upwind_dist=min_sum_instrip_upwind_dist)
-         
+        etparams[0].update({'key': 'c{}'.format(entry_ix)})
+        et_boutstats.update({
+            oi: etparams
+            })
+
         if is_et:
             print("Is ET:", oi, is_et)
             et_bouts.update({'c{}'.format(entry_ix): ob})
