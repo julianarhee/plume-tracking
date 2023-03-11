@@ -66,9 +66,9 @@ def main():
         help='MMDDYYYY-HHmm.log format')
 
     parser.add_argument('-w', '--strip_width', type=float, default=50,
-        help='odor width, mm (default: 10)')
+        help='odor width, mm (default: 50)')
     parser.add_argument('-s', '--strip_sep', type=float, default=500,
-        help='grid separation, mm (default: 200)')
+        help='grid separation, mm (default: 500)')
     parser.add_argument('-v', '--verbose', default=False,
         action='store_true', help='verbose, print all statements')
     parser.add_argument('-O', '--start_at_odor', default=False,
