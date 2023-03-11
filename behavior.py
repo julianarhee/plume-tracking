@@ -1330,7 +1330,8 @@ def filter_bouts_by_dur(df, bout_thresh=0.5, bout_varname='boutnum',
                     reassign_value = False
                 if reassign_value:
                     if boutnum == 1:
-                        print("Changing 1")
+                        print("Changing 1st bout")
+                        print(count_varname, df_[count_varname].unique())
                         prev_value = not bool(df_[count_varname].unique())
                     else:
                         prev_value = df[df[bout_varname]==(boutnum-1)].iloc[-1][count_varname]
