@@ -86,6 +86,8 @@ def main():
         action='store', help='markersize (default=0.5)')
     parser.add_argument('-H', '--hue_varname', default='instrip',
         action='store', help='hue variable (default=instrip)')
+    parser.add_argument('-y', '--y_thresh', default=None,
+        action='store', help='plot horizontal line at y_thresh (default=None)')
 
     args = parser.parse_args()
     rootdir = args.rootdir
@@ -106,7 +108,8 @@ def main():
     plot_errors = args.keep_all_frames # plot errors of keeping all
 
     hue_varname = args.hue_varname
-
+    y_thresh = args.y_thresh
+    plot_threshold = y_thresh is not None
 
     fpath = select_logfile(experiment, datestr, user_input=user_input, rootdir=rootdir)
     #fig, ax = pl.subplots()
@@ -140,7 +143,6 @@ def main():
 
 
     fig, ax = pl.subplots()
-
     ax = butil.plot_trajectory(df0, odor_bounds=strip_borders, title=title, ax=ax,
             start_at_odor=start_at_odor, zero_odor_start=zero_odor_start,
             markersize=markersize, hue_varname=hue_varname, palette=palette)
@@ -151,8 +153,19 @@ def main():
 #                markersize=markersize, fliplr=fliplr, 
 #                remove_invalid=remove_invalid, plot_errors=plot_errors,
 #                hue_varname=hue_varname, palette=palette)
+   
+    if plot_threshold:
+        y_thresh = float(y_thresh)
+#        if zero_odor_start:
+#            odor_ix = df0[df0['instrip']].iloc[0].name
+#            offset_x = df0.loc[odor_ix]['ft_posx']
+#            offset_y = df0.loc[odor_ix]['ft_posy']
+#            y_thresh = y_thresh - offset_y
+        ax.axhline(y=y_thresh, lw=0.5, linestyle=':', c='w')
+        if df0['ft_posy'].max() > y_thresh*2:
+            ax.axhline(y=y_thresh*2, lw=0.5, linestyle=':', c='w')
 
-    ax.set_box_aspect(2.0)
+    ax.set_aspect(1.0)
     # label figure and save
     fig_id = '{}: {}'.format(experiment, datestr)
     util.label_figure(ax.figure, fig_id)
