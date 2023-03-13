@@ -24,7 +24,7 @@ def get_rootdir():
     if get_os() == 'Linux':
         rootdir = '/home/julianarhee/edgetracking-googledrive/Edge_Tracking/Data'
     elif get_os() == 'Darwin':
-        rootdir = '/home/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'
+        rootdir = '/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'
     else:
         rootdir=None
         print("Unknown os: {}".format(get_os()))
@@ -98,6 +98,39 @@ def convert_range(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
 # ----------------------------------------------------------------------
 # Calculation
 # ----------------------------------------------------------------------
+def calculate_tortuosity(traj_coords):
+    '''
+    Calculates tortuosity of path as ratio of path length and dist between start and end points.
+    1 is low-tortuosity (perfect), and inf is high tortuosity.
+    '''
+    # distance between start and end points
+    maxdist = euclidean(traj_coords[0], traj_coords[-1])
+    # total path length
+    pathlength = path_length(traj_coords)
+    # tortuosity as ratio
+    tortuosity = pathlength/maxdist
+    
+    return tortuosity
+
+def path_length(traj, axis='both'): #df, xvar='ft_posx', yvar='ft_posy'):
+
+    if axis=='x':
+        pl = np.sqrt(np.diff(traj[:, 0])**2).sum()
+    elif axis=='y':
+        pl = np.sqrt(np.diff(traj[:, 1])**2).sum()
+    else:
+        #dists = np.linalg.norm(df[[xvar, yvar]].diff(axis=0).dropna(), axis=1)
+        pl = np.linalg.norm(np.diff(traj, axis=0), axis=1).sum()
+
+    return pl
+
+
+def euclidean(point1, point2):
+    x0, y0 = point1
+    x1, y1 = point2
+    return np.sqrt( (x1-x0)**2 + (y1-y0)**2)
+
+
 def signed_angle_from_target(b_, target_angle=-np.pi, varname='heading'):
     """
     Calculate signed angle from left edge, unit vector (-1, 0), -np.pi.
@@ -227,18 +260,20 @@ def label_figure(fig, fig_id, x=0.01, y=0.98):
     fig.text(x, y, fig_id, fontsize=8)
 
 
-def set_sns_style(style='dark'):
+def set_sns_style(style='dark', min_fontsize=6):
     font_styles = {
-                    'axes.labelsize': 7, # x and y labels
-                    'axes.titlesize': 7, # axis title size
-                    'figure.titlesize': 10,
-                    'xtick.labelsize': 6, # fontsize of tick labels
-                    'ytick.labelsize': 6,  
-                    'legend.fontsize': 6,
-                    'legend.title_fontsize': 6
+                    'axes.labelsize': min_fontsize+1, # x and y labels
+                    'axes.titlesize': min_fontsize+1, # axis title size
+                    'figure.titlesize': min_fontsize+4,
+                    'xtick.labelsize': min_fontsize, # fontsize of tick labels
+                    'ytick.labelsize': min_fontsize,  
+                    'legend.fontsize': min_fontsize,
+                    'legend.title_fontsize': min_fontsize+1
         }
     for k, v in font_styles.items():
         pl.rcParams[k] = v
+
+    pl.rcParams['axes.linewidth'] = 0.5
 
     if style=='dark':
         custom_style = {
@@ -437,7 +472,21 @@ def plot_vector_path(ax, x, y, c, scale=1.5, width=0.005, headwidth=5, pivot='ta
 
 
 def custom_legend(labels, colors, use_line=True, lw=4, markersize=10):
+    '''
+    Returns legend handles
 
+    Arguments:
+        labels -- _description_
+        colors -- _description_
+
+    Keyword Arguments:
+        use_line -- _description_ (default: {True})
+        lw -- _description_ (default: {4})
+        markersize -- _description_ (default: {10})
+
+    Returns:
+        _description_
+    '''
     if use_line:
         legh = [mpl.lines.Line2D([0], [0], color=c, label=l, lw=lw) for c, l in zip(colors, labels)]
     else:
