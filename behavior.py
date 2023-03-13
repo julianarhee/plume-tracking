@@ -1130,7 +1130,7 @@ def is_edgetracking(df, etparams=None,
             last_inbout = df[df['instrip']]['boutnum'].max()
             first_inbout = df[df['instrip']]['boutnum'].min()
             xovers = [c for c in v['crossover_bouts'] if c not in [first_inbout, last_inbout]]
-            curr_pass_key.update({'pass_max_crossover': len(xovers) < max_crossovers})
+            curr_pass_key.update({'pass_max_crossover': len(xovers) <= max_crossovers})
 
         et = all(list(curr_pass_key.values()))
 
