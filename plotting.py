@@ -16,6 +16,36 @@ import pylab as pl
 import seaborn as sns
 
 
+
+##
+
+def plot_zeroed_trajectory(df_, ax=None, traj_lw=1.5, odor_lw=1.0,
+                        strip_width=50, strip_sep=500):
+    if ax is None:
+        fig, ax= pl.subplots()
+    odor_ix = df_[df_['instrip']].iloc[0].name
+    #plotdf = df_.loc[odor_ix:]
+    # odor_ix = params[fn]['odor_ix']
+    plotdf = df_.copy()
+    offset_x = plotdf[plotdf['instrip']].iloc[0]['ft_posx']
+    offset_y = plotdf[plotdf['instrip']].iloc[0]['ft_posy']
+    plotdf['ft_posx'] = plotdf['ft_posx'].values - offset_x
+    plotdf['ft_posy'] = plotdf['ft_posy'].values - offset_y
+    odor_bounds = find_strip_borders(plotdf, entry_ix=odor_ix,
+                                        strip_width=strip_width,
+                                        strip_sep=strip_sep)
+    # plot
+    plotdf = plotdf.loc[odor_ix:].copy()
+    
+    ax.plot(plotdf['ft_posx'], plotdf['ft_posy'], lw=traj_lw, c='w')
+    for ob in odor_bounds:
+        plot_odor_corridor(ax, odor_xmin=ob[0], 
+                             odor_xmax=ob[1], odor_linewidth=odor_lw)
+    for bnum, b_ in plotdf[plotdf['instrip']].groupby('boutnum'):
+        ax.plot(b_['ft_posx'], b_['ft_posy'], lw=traj_lw, c='r')
+    return ax
+
+
 def plot_paired_inout_metrics(df_, nr=2, nc=3,
                 varnames=['duration', 'path_length',
                 'crosswind_speed', 'upwind_speed', 
@@ -192,4 +222,43 @@ def plot_one_flys_trials(df_, instrip_palette={True: 'r', False: 'w'},
                 ax.legend_.remove()
 
     return fig
+
+
+
+def plot_array_of_trajectories(trajdf, sorted_eff=[], nr=5, nc=7):
+
+    if len(sorted_eff)==0:
+        sorted_eff = trajdf['filename'].unique()
+
+    fig, axn = pl.subplots(nr, nc, figsize=(15,8), sharex=True)
+    for fi, fn in enumerate(sorted_eff): #(fn, df_) in enumerate(etdf.groupby('filename')):
+        if fi >= nr*nc:
+            break
+        ax=axn.flat[fi]
+        df_ = trajdf[trajdf['filename']==fn].copy()
+        #eff_ix = float(mean_tortdf[mean_tortdf['filename']==fn]['efficiency_ix'].unique())
+        # PLOT
+        plot_zeroed_trajectory(df_, ax=ax, traj_lw=1.5, odor_lw=1.0,
+                                     strip_width=50, #params[fn]['strip_width'],
+                                     strip_sep=1000) #params[fn]['strip_sep'])
+        # legend
+        ax.axis('off')
+        if fi==0:
+            leg_xpos=-150; leg_ypos=0; leg_scale=100
+            butil.vertical_scalebar(ax, leg_xpos=leg_xpos, leg_ypos=leg_ypos)
+        #ax.set_box_aspect(3)
+        ax.set_xlim([-150, 150])
+        ax.set_ylim([-100, 1600])
+        ax.axis('off')
+        ax.set_aspect(0.5)
+        ax.set_title('{}: {:.2f}\n{}'.format(fi, eff_ix, fn), fontsize=6, loc='left')
+
+    for ax in axn.flat[fi:]:
+        ax.axis('off')
+        #ax.set_aspect(0.5)
+        
+    pl.tight_layout()
+    pl.subplots_adjust(top=0.85, hspace=0.4, wspace=0.5) #left=0.1, right=0.9, wspace=1, hspace=1, bottom=0.1, top=0.8)
+    return fig
+
 

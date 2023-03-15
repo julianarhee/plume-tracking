@@ -2799,32 +2799,6 @@ def normalize_position(b_):
 # ----------------------------------------------------------------------
 # Plotting and Visualization
 # ----------------------------------------------------------------------
-def plot_zeroed_trajectory(df_, ax=None, traj_lw=1.5, odor_lw=1.0,
-                        strip_width=50, strip_sep=500):
-    if ax is None:
-        fig, ax= pl.subplots()
-    odor_ix = df_[df_['instrip']].iloc[0].name
-    #plotdf = df_.loc[odor_ix:]
-    # odor_ix = params[fn]['odor_ix']
-    plotdf = df_.copy()
-    offset_x = plotdf[plotdf['instrip']].iloc[0]['ft_posx']
-    offset_y = plotdf[plotdf['instrip']].iloc[0]['ft_posy']
-    plotdf['ft_posx'] = plotdf['ft_posx'].values - offset_x
-    plotdf['ft_posy'] = plotdf['ft_posy'].values - offset_y
-    odor_bounds = find_strip_borders(plotdf, entry_ix=odor_ix,
-                                        strip_width=strip_width,
-                                        strip_sep=strip_sep)
-    # plot
-    plotdf = plotdf.loc[odor_ix:].copy()
-    
-    ax.plot(plotdf['ft_posx'], plotdf['ft_posy'], lw=traj_lw, c='w')
-    for ob in odor_bounds:
-        plot_odor_corridor(ax, odor_xmin=ob[0], 
-                             odor_xmax=ob[1], odor_linewidth=odor_lw)
-    for bnum, b_ in plotdf[plotdf['instrip']].groupby('boutnum'):
-        ax.plot(b_['ft_posx'], b_['ft_posy'], lw=traj_lw, c='r')
-    return ax
-
 
 def vertical_scalebar(ax, leg_xpos=0, leg_ypos=0, leg_scale=100):
     #leg_xpos=0; leg_ypos=round(df0.loc[odor_ix]['ft_posy']); leg_scale=100
