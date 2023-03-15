@@ -138,3 +138,58 @@ def plot_sorted_distn_with_hist(varn, boutdf_filt, estimator='median',
 
     return fig
 
+
+def plot_one_flys_trials(df_, instrip_palette={True: 'r', False: 'w'},
+            incl_logs=[], aspect_ratio=2, y_thresh=None, 
+            sharex=False, sharey=True):
+
+    ntrials = len(df_['trial_id'].unique())
+    fig, axn = pl.subplots(1, ntrials, figsize=(ntrials*2.5, 5))
+    if len(df_['trial_id'].unique())==1:
+        sns.scatterplot(data=df_, x="ft_posx", y="ft_posy", 
+                    hue='instrip', ax=axn,
+                    s=.5, edgecolor='none', palette=instrip_palette)
+        sns.scatterplot(data=df_[df_['led1_stpt']==0], 
+                    x="ft_posx", y="ft_posy", hue='led1_stpt', ax=axn,
+                    s=.5, edgecolor='none', palette={0: 'y'}, legend=False)
+        axn.set_box_aspect(aspect_ratio)
+
+        if y_thresh is not None:
+            axn.axhline(y=y_thresh, linestyle=':', c='w', linewidth=0.5)
+
+        if df_['filename'].unique()[0] in incl_logs:
+            trial_id = '*{}'.format(df_['trial_id'].unique()[0])
+        else:
+            trial_id = df_['trial_id'].unique()[0]
+        currcond = df_['condition'].unique()[0]
+        plot_title = "{}{}{}".format(trial_id, '\n', currcond)
+        axn.set_title(plot_title, fontsize=5, loc='left')
+        axn.legend(bbox_to_anchor=(1,1), loc='upper left')
+    else:
+        for ai, (ax, (trial_id, tdf_)) in enumerate(zip(axn.flat, df_.groupby('trial_id'))):
+            sns.scatterplot(data=tdf_, x="ft_posx", y="ft_posy", 
+                    hue='instrip', ax=ax,
+                    s=.5, edgecolor='none', palette=instrip_palette)
+            sns.scatterplot(data=tdf_[tdf_['led1_stpt']==0], 
+                    x="ft_posx", y="ft_posy", hue='led1_stpt', ax=ax,
+                    s=.5, edgecolor='none', palette={0: 'y'}, legend=False)
+            ax.set_box_aspect(aspect_ratio)
+
+            if y_thresh is not None:
+                ax.axhline(y=y_thresh, linestyle=':', c='w', linewidth=0.5)
+
+            if tdf_['filename'].unique()[0] in incl_logs:
+                trial_id = '*{}'.format(tdf_['trial_id'].unique()[0])
+            else:
+                trial_id = tdf_['trial_id'].unique()[0]
+
+            currcond = tdf_['condition'].unique()[0]
+            plot_title = "{}{}{}".format(trial_id, '\n', currcond)
+            ax.set_title(plot_title, fontsize=6, loc='left')
+            if ai == (ntrials-1):
+                ax.legend(bbox_to_anchor=(1,1.1), loc='lower right')
+            else:
+                ax.legend_.remove()
+
+    return fig
+

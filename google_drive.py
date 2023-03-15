@@ -92,7 +92,8 @@ def get_sheet_keys():
       'constant_vs_gradient': '1Is1t3UtMAycrvpSMvEf6j2Gpc4b5jkEdm7yTIEAxfw8',
       'spontaneous_edge_tracking': '1v2z5npPBzF1et2OQoA2CQuQp8ScBT5HX3uv8KEaAXlk',
       'hdeltca': '1CnFEOQ06Nc8qiyaxab7mUQuWu_UHiFBRQj2C6ZhFfs4',
-      'PAM_GtACR1': '1ZGPrQSciyYYftOqrHcKMGQTu9jh7gb5OY0I0_W0EmW0'
+      'PAM_GtACR1': '1ZGPrQSciyYYftOqrHcKMGQTu9jh7gb5OY0I0_W0EmW0',
+      'EPG_GtACR1': '1-3sKJ-ecv06gX90KENOZM-xryVrt21iOa5JjVrzSu7E'
         }
     return gsheet_key   
 
