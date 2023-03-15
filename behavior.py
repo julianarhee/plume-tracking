@@ -551,7 +551,7 @@ def load_df(fpath):
         df = pkl.load(f)
     return df
 
-def correct_manual_conditions(df, experiment, logdf=None):
+def correct_manual_conditions(df, experiment=None, logdf=None, return_errors=False):
     '''
     Tries to correct manually-renamed files so that "condition" is accurate.
 
@@ -562,25 +562,36 @@ def correct_manual_conditions(df, experiment, logdf=None):
     Returns:
         _description_
     '''
+    errors = []
     print("Correcting experiment conditions: {}".format(experiment))
     if logdf is not None:
         for logfn, df_ in df.groupby('filename'):
-            # specific to old data log format from google sheets...
-            experiment = logdf[logdf['log']=='{}.log'.format(logfn)]['experiment'].values[0]
-            df.loc[df['filename']==logfn, 'condition'] = experiment
-
-            if 'genotype' in logdf.columns:
-                genotype = logdf[logdf['log']=='{}.log'.format(logfn)]['genotype'].values[0]
-                df.loc[df['filename']==logfn, 'genotype'] = genotype
-            if 'fly' in logdf.columns:
-                for fi, df_ in df.groupby('filename'):
-                    explicit_fly_id = logdf.loc[logdf['log']=='{}.log'.format(fi)]['fly'].unique()[0]
-                    datestr = df_['date'].unique()[0]
-                    curr_id = df['fly_id'].unique()
-                    new_id = '{}-fly{}'.format(datestr, explicit_fly_id)
-                    logging.info("Renaming: {} to {}".format(curr_id, new_id))
-                    df.loc[df['filename']==fi, 'fly_id'] = new_id
-                    
+            try:
+                # specific to old data log format from google sheets...
+                #experiment = logdf[logdf['log']=='{}.log'.format(logfn)]['experiment'].values[0]
+                #df.loc[df['filename']==logfn, 'condition'] = experiment
+                voe_datestr = re.findall('\d{8}-\d{6}', logfn)[0]
+                if 'genotype' in logdf.columns:
+                    genotype = logdf[logdf['log']=='{}.log'.format(logfn)]['genotype'].values[0]
+                    df.loc[df['filename']==logfn, 'genotype'] = genotype
+                if 'fly' in logdf.columns:
+                    for fi, df_ in df.groupby('filename'):
+                        explicit_fly_id = logdf.loc[logdf['log']=='{}.log'.format(fi)]['fly'].unique()[0]
+                        datestr = df_['date'].unique()[0]
+                        curr_id = df['fly_id'].unique()
+                        new_id = '{}-fly{}'.format(datestr, explicit_fly_id)
+                        logging.info("Renaming: {} to {}".format(curr_id, new_id))
+                        df.loc[df['filename']==fi, 'fly_id'] = new_id
+                if 'experiment' in logdf.columns:
+                    exp_name = logdf[logdf['log']=='{}.log'.format(logfn)]['experiment'].values[0]
+                    df.loc[df['filename']==logfn, 'experiment'] = exp_name
+                if 'lights' in logdf.columns:
+                    cond = logdf[logdf['log']=='{}.log'.format(logfn)]['lights'].values[0]
+                    df.loc[df['filename']==logfn, 'condition'] = 'lights-on' if cond in [True, 'TRUE', 'True'] else 'lights-off'
+            except Exception as e:
+                print("Error with logdf: {}".format(logfn))
+                print(e)
+                errors.append(logfn) 
     else:
         if experiment=='vertical_strip/paired_experiments':
             # update condition names
@@ -604,13 +615,17 @@ def correct_manual_conditions(df, experiment, logdf=None):
 
         #df['genotype'] = ''
 
-    return df
+    if return_errors:
+        return df, errors
+    else:
+        return df
 
 def load_combined_df(src_dir=None, log_files=None, logdf=None, is_csv=False, 
                 experiment=None, savedir=None, 
                 create_new=False, verbose=False, save_errors=True, 
                 remove_invalid=True, fliplr=True,
                 process=True, save=True, parse_filename=True, 
+                return_errors=False,
                 rootdir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
     '''
     _summary_
@@ -668,13 +683,13 @@ def load_combined_df(src_dir=None, log_files=None, logdf=None, is_csv=False,
             os.makedirs(os.path.join(savedir, 'errors'))
 
     if log_files is None:
-        print("Creating new combined df from raw files...")
         log_fmt = 'csv' if is_csv else 'log'
         log_files = sorted([k for k in glob.glob(os.path.join(src_dir, '*.{}'.format(log_fmt)))\
                 if 'lossed tracking' not in k], key=util.natsort)
     print("Processing {} tracking files.".format(len(log_files)))
 
     if create_new:
+        print("Creating combined df")
         # cycle thru log files and combine into 1 mega df
         dlist = []
         for fi, fn in enumerate(log_files):
@@ -700,21 +715,31 @@ def load_combined_df(src_dir=None, log_files=None, logdf=None, is_csv=False,
                 logging.error("Issue parsing: {}.".format(fn))
                 logging.info(e)
         df = pd.concat(dlist, axis=0)
-        # get experiment name
-        if experiment is None:
-            experiment = src_dir.split('{}/'.format(rootdir))[-1]
-        df = correct_manual_conditions(df, experiment, logdf=logdf)
-        # do some processing, like distance and speed calculations
-        if process:
-            if verbose:
-                print("---> processing")
-            df = process_df(df, verbose=verbose)
-       # save
-        if save:
-            print("Saving combined df to: {}".format(savedir))
-            save_df(df, df_fpath)
 
-    return df
+
+        try:
+            # get experiment name
+            if experiment is None:
+                experiment = src_dir.split('{}/'.format(rootdir))[-1]
+
+            # some additional corrections
+            df, errors = correct_manual_conditions(df, experiment, logdf=logdf, return_errors=True)
+            # do some processing, like distance and speed calculations
+            if process:
+                if verbose:
+                    print("---> processing")
+                df = process_df(df, verbose=verbose)
+            # save
+            if save:
+                print("Saving combined df to: {}".format(savedir))
+                save_df(df, df_fpath)
+        except Exception as e:
+            print(e)
+
+    if return_errors:
+        return df, errors
+    else:
+        return df
 
 # strip-related calculations
 # --------------------------------------------------------------------
@@ -776,7 +801,6 @@ def get_odor_params(df, strip_width=50, strip_sep=200, get_all_borders=True,
                     } 
 
     return odor_params
-
 
 
 def check_entryside_and_flip(df_, strip_width=50, strip_sep=500, odor_dict=None, verbose=False):
@@ -2809,6 +2833,18 @@ def vertical_scalebar(ax, leg_xpos=0, leg_ypos=0, leg_scale=100):
     ax.text(leg_xpos-5, leg_ypos+(leg_scale/2), '{} mm'.format(leg_scale), fontsize=12, horizontalalignment='right')
     #ax.axis('off')
     
+def zero_odor_start(df0):
+    df = df0.copy()
+    odor_start_x = float(df[df['instrip']].iloc[0]['ft_posx'])
+    odor_start_y = float(df[df['instrip']].iloc[0]['ft_posy'])
+    #print("Subtracting: {:.2f}, {:.2f}".format(odor_start_x, odor_start_y))
+    new_x = df['ft_posx'].values - odor_start_x
+    new_y = df['ft_posy'].values - odor_start_y
+    df['ft_posx'] = new_x 
+    df['ft_posy'] = new_y 
+
+    return df
+
 
 def plot_trajectory_from_file(fpath, parse_filename=False, 
             fliplr=True, remove_invalid=True, plot_errors=False,
@@ -2866,13 +2902,7 @@ def plot_trajectory(df0, odor_bounds=[], ax=None,
     
     if zero_odor_start:
         print("...zeroing to odor start")
-        odor_start_x = float(df[df['instrip']].iloc[0]['ft_posx'])
-        odor_start_y = float(df[df['instrip']].iloc[0]['ft_posy'])
-        print("Subtracting: {:.2f}, {:.2f}".format(odor_start_x, odor_start_y))
-        new_x = df['ft_posx'].values - odor_start_x
-        new_y = df['ft_posy'].values - odor_start_y
-        df['ft_posx'] = new_x 
-        df['ft_posy'] = new_y 
+        df = zero_odor_start(df)
         for i, (om, oM) in enumerate(odor_bounds):
            odor_bounds[i] = (om - odor_start_x, oM - odor_start_x)
     # plot trajectory
