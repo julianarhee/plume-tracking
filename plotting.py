@@ -16,11 +16,14 @@ import pylab as pl
 import seaborn as sns
 
 
+import utils as util
+import behavior as butil
 
 ##
 
 def plot_zeroed_trajectory(df_, ax=None, traj_lw=1.5, odor_lw=1.0,
-                        strip_width=50, strip_sep=500):
+                        strip_width=50, strip_sep=500, 
+                        bool_colors=['r'], bool_vars=['instrip']):
     if ax is None:
         fig, ax= pl.subplots()
     odor_ix = df_[df_['instrip']].iloc[0].name
@@ -31,7 +34,7 @@ def plot_zeroed_trajectory(df_, ax=None, traj_lw=1.5, odor_lw=1.0,
     offset_y = plotdf[plotdf['instrip']].iloc[0]['ft_posy']
     plotdf['ft_posx'] = plotdf['ft_posx'].values - offset_x
     plotdf['ft_posy'] = plotdf['ft_posy'].values - offset_y
-    odor_bounds = find_strip_borders(plotdf, entry_ix=odor_ix,
+    odor_bounds = butil.find_strip_borders(plotdf, entry_ix=odor_ix,
                                         strip_width=strip_width,
                                         strip_sep=strip_sep)
     # plot
@@ -39,10 +42,12 @@ def plot_zeroed_trajectory(df_, ax=None, traj_lw=1.5, odor_lw=1.0,
     
     ax.plot(plotdf['ft_posx'], plotdf['ft_posy'], lw=traj_lw, c='w')
     for ob in odor_bounds:
-        plot_odor_corridor(ax, odor_xmin=ob[0], 
+        butil.plot_odor_corridor(ax, odor_xmin=ob[0], 
                              odor_xmax=ob[1], odor_linewidth=odor_lw)
-    for bnum, b_ in plotdf[plotdf['instrip']].groupby('boutnum'):
-        ax.plot(b_['ft_posx'], b_['ft_posy'], lw=traj_lw, c='r')
+
+    for col, boolvar in zip(bool_colors, bool_vars):
+        for bnum, b_ in plotdf[plotdf[boolvar]].groupby('boutnum'):
+            ax.plot(b_['ft_posx'], b_['ft_posy'], lw=traj_lw, c=col)
     return ax
 
 
@@ -225,7 +230,8 @@ def plot_one_flys_trials(df_, instrip_palette={True: 'r', False: 'w'},
 
 
 
-def plot_array_of_trajectories(trajdf, sorted_eff=[], nr=5, nc=7):
+def plot_array_of_trajectories(trajdf, sorted_eff=[], nr=5, nc=7, aspect_ratio=0.5,
+                            bool_colors=['r'], bool_vars=['instrip']):
 
     if len(sorted_eff)==0:
         sorted_eff = trajdf['filename'].unique()
@@ -240,7 +246,9 @@ def plot_array_of_trajectories(trajdf, sorted_eff=[], nr=5, nc=7):
         # PLOT
         plot_zeroed_trajectory(df_, ax=ax, traj_lw=1.5, odor_lw=1.0,
                                      strip_width=50, #params[fn]['strip_width'],
-                                     strip_sep=1000) #params[fn]['strip_sep'])
+                                     strip_sep=1000, #) #params[fn]['strip_sep'])
+                                bool_colors=bool_colors,
+                                bool_vars=bool_vars)
         # legend
         ax.axis('off')
         if fi==0:
@@ -250,8 +258,8 @@ def plot_array_of_trajectories(trajdf, sorted_eff=[], nr=5, nc=7):
         ax.set_xlim([-150, 150])
         ax.set_ylim([-100, 1600])
         ax.axis('off')
-        ax.set_aspect(0.5)
-        ax.set_title('{}: {:.2f}\n{}'.format(fi, eff_ix, fn), fontsize=6, loc='left')
+        ax.set_aspect(aspect_ratio)
+        ax.set_title('{}:\n{}'.format(fi, fn), fontsize=6, loc='left')
 
     for ax in axn.flat[fi:]:
         ax.axis('off')
