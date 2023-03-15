@@ -94,6 +94,8 @@ def convert_range(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
     newval = (((oldval - oldmin) * newrange) / oldrange) + newmin
     return newval
 
+def flatten(l):
+    return [item for sublist in l for item in sublist]
 
 # ----------------------------------------------------------------------
 # Calculation
