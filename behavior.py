@@ -374,14 +374,14 @@ def load_dataframe(fpath, verbose=False, experiment=None,
     # check LEDs
     if 'led_on' not in df0.columns:
         df0['led_on'] = False
-        if 'led1_stpt' in df0.columns: #and 'led_on' not in df0.columns:
-            datestr = int(df0['date'].unique())
-            # 20200720: latest date for PAM_starved-flies (vertical_strip)
-            # 20200925: latest date for PAM_activateion_fed-flies
-            if int(datestr) <= 20200925:
-                df0['led_on'] = df0['led1_stpt']==1 
-            else:
-                df0['led_on'] = df0['led1_stpt']==0
+    if 'led1_stpt' in df0.columns: #and 'led_on' not in df0.columns:
+        datestr = int(df0['date'].unique())
+        # 20200720: latest date for PAM_starved-flies (vertical_strip)
+        # 20200925: latest date for PAM_activateion_fed-flies
+        if int(datestr) <= 20200925:
+            df0['led_on'] = df0['led1_stpt']==1 
+        else:
+            df0['led_on'] = df0['led1_stpt']==0
 
     # assign "instrip" -- can be odor or led (odor takes priority)
     if 'instrip' not in df0.columns:
@@ -551,7 +551,7 @@ def load_df(fpath):
         df = pkl.load(f)
     return df
 
-def correct_manual_conditions(df, experiment=None, logdf=None, return_errors=False):
+def correct_manual_conditions(df, experiment=None, logdf=None, return_errors=False, verbose=False):
     '''
     Tries to correct manually-renamed files so that "condition" is accurate.
 
@@ -574,14 +574,18 @@ def correct_manual_conditions(df, experiment=None, logdf=None, return_errors=Fal
                 if 'genotype' in logdf.columns:
                     genotype = logdf[logdf['log']=='{}.log'.format(logfn)]['genotype'].values[0]
                     df.loc[df['filename']==logfn, 'genotype'] = genotype
+                    if verbose:
+                        print("... updated genotype")
                 if 'fly' in logdf.columns:
-                    for fi, df_ in df.groupby('filename'):
-                        explicit_fly_id = logdf.loc[logdf['log']=='{}.log'.format(fi)]['fly'].unique()[0]
-                        datestr = df_['date'].unique()[0]
-                        curr_id = df['fly_id'].unique()
-                        new_id = '{}-fly{}'.format(datestr, explicit_fly_id)
-                        logging.info("Renaming: {} to {}".format(curr_id, new_id))
-                        df.loc[df['filename']==fi, 'fly_id'] = new_id
+                    explicit_fly_id = logdf.loc[logdf['log']=='{}.log'.format(logfn)]['fly'].unique()[0]
+                    datestr = df_['date'].unique()[0]
+                    curr_id = df['fly_id'].unique()
+                    new_id = '{}-fly{}'.format(datestr, explicit_fly_id)
+                    logging.info("Renaming: {} to {}".format(curr_id, new_id))
+                    df.loc[df['filename']==logfn, 'fly_id'] = new_id
+                    df.loc[df['filename']==logfn, 'fly_name'] = explicit_fly_id
+                    if verbose:
+                        print("... updated fly name: {}".format(explicit_fly_id))
                 if 'experiment' in logdf.columns:
                     exp_name = logdf[logdf['log']=='{}.log'.format(logfn)]['experiment'].values[0]
                     df.loc[df['filename']==logfn, 'experiment'] = exp_name
