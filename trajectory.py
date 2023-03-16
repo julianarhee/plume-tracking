@@ -225,85 +225,29 @@ def filter_first_instrip_last_outstrip(boutdf):
 
 
 
+def upsample_trajectory(df_, max_nframes, xvar='ft_posx', yvar='ft_posy', offset=True):
+    d_list=[]
+    for (trial_id, ep, bnum), b_ in df_.groupby(['trial_id', 'epoch', 'boutnum']):
+        px = np.pad(b_[xvar].values, (0, int(max_nframes-len(b_))), 'constant', constant_values=np.nan)
+        py = np.pad(b_[yvar].values, (0, int(max_nframes-len(b_))), 'constant', constant_values=np.nan)
+        d_ = pd.DataFrame({
+                      'boutnum': [bnum]*len(px),
+                      'epoch': [ep]*len(px),
+                      'trial_id': [trial_id]*len(px),
+                       xvar: px - px[0], 
+                       yvar: py - py[0], 
+                      'ix': np.arange(0, len(px)),
+                      'instrip': [b_['instrip'].unique()[0]]*len(px)})
+        d_list.append(d_)
+    up_ = pd.concat(d_list).reset_index(drop=True)
+    return up_
+
+
+
 def calculate_tortuosity_metrics(df, xdist_cutoff=1.9, xvar='ft_posx', yvar='ft_posy'):
 
     last_outbout = df[~df['instrip']]['boutnum'].max()
     max_boutnum = df['boutnum'].max()
-    skip_last_bout = last_outbout==max_boutnum
-
-    # do it
-    d_list = []
-    for bnum, bdf in df[~df['instrip']].groupby('boutnum'):
-        if bnum == last_outbout and skip_last_bout:
-            continue
-        max_ix = np.argmax(bdf[xvar])
-        if max_ix==0: # this bout is flipped out to negative side, do flipLR
-            bdf['ft_posx'], bdf['ft_posy'] = util.fliplr_coordinates(bdf['ft_posx'].values, \
-                                             bdf['ft_posy'].values)
-            max_ix = np.argmax(bdf[xvar])
-            print(max_ix)
-        min_ix = np.argmin(bdf[xvar])
-        maxdist_x = bdf.iloc[max_ix][xvar] - bdf.iloc[min_ix][xvar]
-        if maxdist_x < xdist_cutoff:
-            continue
-
-        outbound_traj = bdf.iloc[0:max_ix][[xvar, yvar]].values
-        inbound_traj = bdf.iloc[max_ix:][[xvar, yvar]].values
-        # path length
-        pathlength_out = util.path_length(outbound_traj)
-        pathlength_in = util.path_length(inbound_traj)
-        # tortuosity 
-        tort_outbound = util.calculate_tortuosity(outbound_traj)
-        tort_inbound = util.calculate_tortuosity(inbound_traj)
-        # efficiency of path
-        xpathlength_out = util.path_length(outbound_traj, axis='x')
-        xpathlength_in = util.path_length(inbound_traj, axis='x')
-
-        # combine
-        d_ = pd.DataFrame({
-            'boutnum': [bnum]*2,
-            'boutdir': ['outbound', 'inbound'],
-            'pathlength': [pathlength_out, pathlength_in],
-            'tortuosity': [tort_outbound, tort_inbound],
-            'xpath_length': [xpathlength_out, xpathlength_in],
-            'efficiency': [xpathlength_out/maxdist_x, xpathlength_in/maxdist_x],
-            'maxdist_x': [maxdist_x]*2,
-            'max_xpos': [bdf.iloc[max_ix]['ft_posx']]*2,
-            'max_ix': [max_ix]*2,
-        })
-
-        d_list.append(d_)
-
-    tortdf = pd.concat(d_list,axis=0).reset_index(drop=True)
-    
-    return tortdf
-
-def plot_tortuosity_metrics(tortdf, cdf=False,
-                            boutdir_palette={'outbound': 'cyan', 'inbound': 'violet'}):
-    fig, axn = pl.subplots(1, 3, figsize=(8,4))
-    ax=axn[0]
-    ax=sns.histplot(data=tortdf, x='pathlength', hue='boutdir', ax=ax, palette=boutdir_palette,
-                 cumulative=cdf, fill=False, element='poly', stat='probability',
-                 common_norm=False)
-    ax=axn[1]
-    ax=sns.histplot(data=tortdf, x='tortuosity', hue='boutdir', ax=ax, palette=boutdir_palette,
-                 cumulative=cdf, fill=False, element='poly', stat='probability',
-                 common_norm=False)
-    ax=axn[2]
-    ax=sns.histplot(data=tortdf, x='efficiency', hue='boutdir', ax=ax, palette=boutdir_palette,
-                 cumulative=cdf, fill=False, element='poly', stat='probability',
-                 common_norm=False)
-    for ai, ax in enumerate(axn):
-        ax.set_box_aspect(1)
-        if ai==2:
-            h, l = ax.get_legend_handles_labels()
-            #l = ax.legend_data.keys()
-            sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1), frameon=False)
-        else:
-            ax.legend_.remove()
-    pl.subplots_adjust(left=0.1, right=0.85, wspace=0.5)
-    return fig
-
 
 # util.set_sns_style(style='dark', min_fontsize=12)
 
