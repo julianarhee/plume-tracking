@@ -44,6 +44,16 @@ def zero_trajectory(df_):
 
     return plotdf.loc[odor_ix:]
 
+def zero_start_position(b_):
+    b_['ft_posx_start0'] = b_['ft_posx'] - b_['ft_posx'].iloc[0]
+    b_['ft_posy_start0'] = b_['ft_posy'] - b_['ft_posy'].iloc[0]
+    return b_
+
+def normalize_position(b_):
+    b_['ft_posx_norm'] = util.convert_range(b_['ft_posx_start0'], newmin=0, newmax=1)
+    b_['ft_posy_norm'] = util.convert_range(b_['ft_posy_start0'], newmin=0, newmax=1)
+    return b_
+
 
 
 def plot_zeroed_trajectory(df_, ax=None, traj_lw=1.5, odor_lw=1.0,
