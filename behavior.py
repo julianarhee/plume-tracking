@@ -1037,8 +1037,9 @@ def find_crossovers(df_, strip_width=50):
 
 def calculate_et_params(curr_bouts):
     first_instrip_bout = curr_bouts[curr_bouts['instrip']]['boutnum'].min() 
-    n_outside = len(curr_bouts[(~curr_bouts['instrip']) \
-                                & (curr_bouts['boutnum']>first_instrip_bout)]['boutnum'].unique())
+    #n_outside = len(curr_bouts[(~curr_bouts['instrip']) \
+    #                            & (curr_bouts['boutnum']>first_instrip_bout)]['boutnum'].unique())
+    n_outside = len(curr_bouts[~curr_bouts['instrip']]['boutnum'].unique())
 
     upwind_dists = curr_bouts.groupby('boutnum', group_keys=True).apply(lambda x: x['ft_posy'].max() - x['ft_posy'].min())
 
@@ -1065,7 +1066,8 @@ def calculate_et_params(curr_bouts):
 
     return curr_params
 
-def get_edgetracking_params(df, strip_width=50, split_at_crossovers=True):
+def get_edgetracking_params(df, strip_width=50, split_at_crossovers=True,
+                        crop_first_last=True):
     '''
     Calculate chunks of tracking (split by crossover events).
     Return dict of params for each found chunk. Len of keys is N crossovers.
@@ -1081,6 +1083,7 @@ def get_edgetracking_params(df, strip_width=50, split_at_crossovers=True):
 
         # TO DO: test this again
         last_outstrip_bout = df[~df['instrip']]['boutnum'].max()
+        # skip the last bout if it is an outstrip bout
         skip_last_bout = df['boutnum'].max() == last_outstrip_bout
         max_boutnum = last_outstrip_bout-1 if skip_last_bout else df['boutnum'].max()
 
@@ -1093,8 +1096,13 @@ def get_edgetracking_params(df, strip_width=50, split_at_crossovers=True):
             prev_xover = xover
             etparams.update({xi: curr_params})
     else:
-        first_instrip_bout = df[df['instrip']]['boutnum'].min() + 1
-        last_instrip_bout = df[df['instrip']]['boutnum'].max()
+        if crop_first_last:
+            first_instrip_bout = df[df['instrip']]['boutnum'].min() + 1
+            last_instrip_bout = df[df['instrip']]['boutnum'].max()
+        else:
+            first_instrip_bout = df['boutnum'].min()
+            last_instrip_bout = df['boutnum'].max()
+
         #last_outstrip_bout = df[~df['instrip']]['boutnum'].max()
         #skip_last_bout = df['boutnum'].max() == last_outstrip_bout
         #max_boutnum = last_outstrip_bout-1 if skip_last_bout else df['boutnum'].max()
@@ -1111,7 +1119,8 @@ def get_edgetracking_params(df, strip_width=50, split_at_crossovers=True):
 
 
 def is_edgetracking(df, etparams=None,
-                    strip_width=50, split_at_crossovers=True, return_key=False,
+                    strip_width=50, split_at_crossovers=True, crop_first_last=True,
+                        return_key=False,
                         min_outside_bouts=3, min_upwind_dist=200, max_crossovers=3,
                         min_global_upwind_dist=300, min_total_instrip_upwind_dist=300,
                         max_instrip_upwind_percent=0.8):
@@ -1133,7 +1142,9 @@ def is_edgetracking(df, etparams=None,
 
     '''
     #if etparams is None: 
-    etparams = get_edgetracking_params(df, strip_width=strip_width, split_at_crossovers=split_at_crossovers)
+    etparams = get_edgetracking_params(df, strip_width=strip_width, 
+                            split_at_crossovers=split_at_crossovers,
+                            crop_first_last=crop_first_last)
 
 #        max_instrip_upwind_percent = 0.8 #250 #250
 #        min_sum_instrip_upwind_dist = 250
@@ -2669,13 +2680,13 @@ def mean_dir_after_stop(df, heading_var='ft_heading',theta_range=(-np.pi, np.pi)
     return meandirs
 
 
-def get_bout_metrics(b_, heading_vars=['ft_heading', 'heading'],
+def calculate_bout_metrics(b_, heading_vars=['ft_heading', 'heading'],
                     group_vars=['fly_id', 'condition', 'boutnum', 'trial_id'],
                     theta_range=(-np.pi, np.pi), xvar='ft_posx', yvar='ft_posy'):
     '''
     Calculate metrics for 1 bout. 
     To do for all bouts: 
-    df.groupby('boutnum').apply(get_bout_metrics).unstack().reset_index()
+    df.groupby('boutnum').apply(calculate_bout_metrics).unstack().reset_index()
 
     Arguments:
         df_ (pd.DataFrame):  df of 1 single bout
@@ -2736,6 +2747,50 @@ def get_bout_metrics(b_, heading_vars=['ft_heading', 'heading'],
     #metrics = pd.DataFrame(pd.concat([misc, lin_metrics, single_metrics])).T    
     metrics = pd.concat([misc, lin_metrics, single_metrics]).T
     return metrics
+
+
+def get_bout_metrics(etdf1):
+    grouper = ['fly_id', 'filename', 'boutnum', 'condition']
+    b_list= []
+    for i, ((fid, fn, bnum, cond), df_) in enumerate(etdf1.groupby(grouper, group_keys=False)):
+        d_ = pd.DataFrame(calculate_bout_metrics(df_)).T
+        d_['fly_id'] = fid
+        d_['filename'] = fn
+        d_['boutnum'] = bnum
+        d_['condition'] = cond
+        d_['led_on'] = any(df_['led_on']) 
+        b_list.append(d_)
+    boutdf = pd.concat(b_list, axis=0).reset_index(drop=True)
+
+    boutdf['instrip'] = boutdf['instrip'].astype(bool)
+    boutdf['led_on'] = boutdf['led_on'].astype(bool)
+    boutdf['epoch_type'] = ['{}-{}'.format(a, b) for (a, b) in boutdf[['bout_type', 'epoch']].values]
+
+    check_cols=[]
+    for c in boutdf.columns.tolist():
+        if not pd.api.types.is_numeric_dtype(boutdf[c]):
+            check_cols.append(c)
+    non_numeric = [
+        'bout_type',
+        'epoch_type',
+        'epoch',
+        'experiment',
+        'filename',
+        'fly_name',
+        'fly_id',
+        'fpath',
+        'strip_type',
+        'condition',
+        'trial']
+    fix_cols = [c for c in check_cols if c not in non_numeric]
+    for c in fix_cols:
+        boutdf[c] = boutdf[c].astype(float)
+    for c in boutdf.columns.tolist():
+        if not pd.api.types.is_numeric_dtype(boutdf[c]):
+            check_cols.append(c)
+
+    return boutdf
+
 
 def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, strip_sep=200, 
                     xvar='ft_posx', yvar='ft_posy',
