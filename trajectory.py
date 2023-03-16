@@ -123,6 +123,7 @@ def find_et_bouts(df0, odor_bounds, strip_width=50, strip_sep=1000,
                             return_key=True,
                             strip_width=strip_width, 
                             split_at_crossovers=False,
+                            crop_first_last=False,
                             min_outside_bouts=min_outside_bouts,
                             max_crossovers=max_crossovers,
                             #min_global_upwind_dist=min_global_upwind_dist, 
@@ -200,27 +201,27 @@ def check_and_flip_traj(df0_full, et_boutkey, et_boutstats, et_bouts, strip_widt
 
 
 
-def filter_first_instrip_last_outstrip(etdf, boutdf):
+def filter_first_instrip_last_outstrip(boutdf):
     '''
     Remove 1st instrip (odor starts on top of fly), and last outstrip (wandering off)
     '''
 
     d_list = []
-    t_list = []
+    #t_list = []
     for fn, df_ in boutdf.groupby('filename'):
         first_instrip = df_[df_['instrip']]['boutnum'].min()
         last_instrip = df_[df_['instrip']]['boutnum'].max()
         tmpdf = df_[(df_['boutnum']<=last_instrip) & (df_['boutnum']>first_instrip)]
         d_list.append(tmpdf)
         #print(first_instrip, last_instrip, tmpdf.shape)
-        traj_ = etdf[etdf['filename']==fn].copy()
-        traj_tmp = traj_[(traj_['boutnum']<=last_instrip) & (traj_['boutnum']>first_instrip)]
-        t_list.append(traj_tmp)
+        #traj_ = etdf[etdf['filename']==fn].copy()
+        #traj_tmp = traj_[(traj_['boutnum']<=last_instrip) & (traj_['boutnum']>first_instrip)]
+        #t_list.append(traj_tmp)
     boutdf_filt = pd.concat(d_list, axis=0).reset_index(drop=True)
     print(boutdf_filt.shape)
-    trajdf_filt = pd.concat(t_list, axis=0).reset_index(drop=True)
+    #trajdf_filt = pd.concat(t_list, axis=0).reset_index(drop=True)
     
-    return boutdf_filt, trajdf_filt
+    return boutdf_filt #, trajdf_filt
 
 
 
