@@ -341,9 +341,9 @@ def plot_one_flys_trials(df_, instrip_palette={True: 'r', False: 'w'},
         sns.scatterplot(data=df_, x="ft_posx", y="ft_posy", 
                     hue='instrip', ax=axn,
                     s=.5, edgecolor='none', palette=instrip_palette)
-        sns.scatterplot(data=df_[df_['led1_stpt']==0], 
-                    x="ft_posx", y="ft_posy", hue='led1_stpt', ax=axn,
-                    s=.5, edgecolor='none', palette={0: 'y'}, legend=False)
+        sns.scatterplot(data=df_[df_['led_on']], 
+                    x="ft_posx", y="ft_posy", hue='led_on', ax=axn,
+                    s=.5, edgecolor='none', palette={True: 'y'}, legend=False)
         axn.set_box_aspect(aspect_ratio)
 
         if y_thresh is not None:
@@ -362,9 +362,9 @@ def plot_one_flys_trials(df_, instrip_palette={True: 'r', False: 'w'},
             sns.scatterplot(data=tdf_, x="ft_posx", y="ft_posy", 
                     hue='instrip', ax=ax,
                     s=.5, edgecolor='none', palette=instrip_palette)
-            sns.scatterplot(data=tdf_[tdf_['led1_stpt']==0], 
-                    x="ft_posx", y="ft_posy", hue='led1_stpt', ax=ax,
-                    s=.5, edgecolor='none', palette={0: 'y'}, legend=False)
+            sns.scatterplot(data=tdf_[tdf_['led_on']], 
+                    x="ft_posx", y="ft_posy", hue='led_on', ax=ax,
+                    s=.5, edgecolor='none', palette={True: 'y'}, legend=False)
             ax.set_box_aspect(aspect_ratio)
 
             if y_thresh is not None:
