@@ -13,6 +13,7 @@ import os
 import sys
 import glob
 import numpy as np
+import scipy as sp
 import pandas as pd
 
 import seaborn as sns
@@ -224,23 +225,134 @@ def filter_first_instrip_last_outstrip(boutdf):
     return boutdf_filt #, trajdf_filt
 
 
+## combining traces
+def upsample_bout_trajectories(df_, npoints=1000):
+    '''
+    For all bouts of 1 condition type (instrip, pre-led, etc.),
+    upsample by interpolating each bout curve.
+    Shape of bout should be the same (start/end point, too), but just 
+    scaled to match npoints.
+    '''
+    avg_x_in = []
+    avg_y_in = []
+    x_list=[]; y_list=[];
+    x_list2=[]; y_list2=[];
+    for bnum, b_ in df_.dropna().groupby('boutnum'):
+        x = b_['ft_posx'].values - b_['ft_posx'].values[0]
+        y = b_['ft_posy'].values - b_['ft_posy'].values[0]
 
-def upsample_trajectory(df_, max_nframes, xvar='ft_posx', yvar='ft_posy', offset=True):
-    d_list=[]
-    for (trial_id, ep, bnum), b_ in df_.groupby(['trial_id', 'epoch', 'boutnum']):
-        px = np.pad(b_[xvar].values, (0, int(max_nframes-len(b_))), 'constant', constant_values=np.nan)
-        py = np.pad(b_[yvar].values, (0, int(max_nframes-len(b_))), 'constant', constant_values=np.nan)
-        d_ = pd.DataFrame({
-                      'boutnum': [bnum]*len(px),
-                      'epoch': [ep]*len(px),
-                      'trial_id': [trial_id]*len(px),
-                       xvar: px - px[0], 
-                       yvar: py - py[0], 
-                      'ix': np.arange(0, len(px)),
-                      'instrip': [b_['instrip'].unique()[0]]*len(px)})
-        d_list.append(d_)
-    up_ = pd.concat(d_list).reset_index(drop=True)
-    return up_
+        t = np.arange(len(x))
+        t_common = np.linspace(t[0], t[-1], npoints)
+        fx = sp.interpolate.interp1d(t, x)
+        fy = sp.interpolate.interp1d(t, y)
+
+        interpx =fx(t_common)
+        interpy = fy(t_common)
+        avg_x_in.append(interpx)
+        avg_y_in.append(interpy)
+        
+        x_list.append(pd.DataFrame(data=x, columns=[bnum]))
+        y_list.append(pd.DataFrame(data=y, columns=[bnum]))
+        
+        x_list2.append(pd.DataFrame(data=interpx, columns=[bnum]))
+        y_list2.append(pd.DataFrame(data=interpy, columns=[bnum]))
+        
+    og_x = pd.concat(x_list, axis=1)
+    og_y = pd.concat(y_list, axis=1)
+
+    interp_x = pd.concat(x_list2, axis=1)
+    interp_y = pd.concat(y_list2, axis=1)
+
+    return interp_x, interp_y
+
+def align_and_average_bout_center0(df_, end_at_zero=False):
+
+    interp_x_in, interp_y_in = upsample_bout_trajectories(df_)
+    #interp_x_out, interp_y_out = traj.upsample_bout_trajectories(df_[~df_['instrip']])
+   
+    offset_ix = -1 if end_at_zero else 0 
+    interp_x_in = interp_x_in.apply(lambda x: x-x.iloc[offset_ix])
+    interp_y_in = interp_y_in.apply(lambda x: x-x.iloc[offset_ix])
+    
+    #out_offset = interp_y_in.mean(axis=1).iloc[-1]
+    #interp_x_out = interp_x_out.apply(lambda x: x-x.iloc[0]) 
+    #interp_y_out = interp_y_out.apply(lambda x: x-x.iloc[0]) #+ out_offset
+
+    avg_x_in = interp_x_in.mean(axis=1)
+    avg_y_in = interp_y_in.mean(axis=1)
+    #avg_x_out = interp_x_out.mean(axis=1)
+    #avg_y_out = interp_y_out.mean(axis=1)
+
+    return interp_x_in, interp_y_in, avg_x_in, avg_y_in
+#
+#def upsample_trajectory(df_, max_nframes, xvar='ft_posx', yvar='ft_posy', offset=True):
+#    d_list=[]
+#    for (trial_id, ep, bnum), b_ in df_.groupby(['trial_id', 'epoch', 'boutnum']):
+#        px = np.pad(b_[xvar].values, (0, int(max_nframes-len(b_))), 'constant', constant_values=np.nan)
+#        py = np.pad(b_[yvar].values, (0, int(max_nframes-len(b_))), 'constant', constant_values=np.nan)
+#        d_ = pd.DataFrame({
+#                      'boutnum': [bnum]*len(px),
+#                      'epoch': [ep]*len(px),
+#                      'trial_id': [trial_id]*len(px),
+#                       xvar: px,  - px[0], 
+#                       yvar: py, - py[0], 
+#                      'ix': np.arange(0, len(px)),
+#                      'instrip': [b_['instrip'].unique()[0]]*len(px)})
+#        d_list.append(d_)
+#    up_ = pd.concat(d_list).reset_index(drop=True)
+#    return up_
+#
+
+#def upsample_bout_to_pivot(up_, xvar='ft_posx', yvar='ft_posy'):
+#    '''
+#    Trajectories upsampled to match in length, filled with nans.
+#    Reshape into pivot table for easy manipulation.
+#    '''
+#    px = pd.pivot_table(up_[up_['instrip']], columns=['boutnum'], index=['ix'], values=xvar)
+#    py = pd.pivot_table(up_[up_['instrip']], columns=['boutnum'], index=['ix'], values=yvar)
+#
+#    return px, py
+
+#def align_and_average_in2out(px, py, end_at_zero=True, 
+#                    min_bouts_to_average=3):
+#    '''
+#    Specific to upsampled bouts for creating aligned and averaged bout.
+#    Assumes start with IN bout, which ends at (0,0) and ends with OUT bout, which starts at (0, 0).
+#
+#    To average IN bouts ending at (0, 0), some flipping and aligning needs to be done to make sure averaging the way the traces are visualized. Not nec for OUT bouts, because they already start at (0, 0).
+#    '''   
+#    ix_to_offset = -1 if end_at_zero else 0
+#    # if subtract last point, the trace should "end" at 0
+#    # to start at 0, subtract off the 1st point
+#    zero_px = px.apply(lambda x: x-x.dropna().iloc[ix_to_offset])
+#    zero_py = py.apply(lambda x: x-x.dropna().iloc[ix_to_offset]) 
+#
+#    if end_at_zero:
+#        # flip array so that the end point (0) is at the start for averaging
+#        d_list=[]
+#        for i, (b, v) in enumerate(zero_py.items()):
+#            flipped_vals = v[::-1].dropna().values
+#            d_list.append(pd.DataFrame(data=flipped_vals, columns=[b], index=np.arange(0, len(flipped_vals))))
+#        zero_aligned_y = pd.concat(d_list, axis=1)
+#        #print(zero_aligned_y.shape, zero_py.shape)
+#
+#        d_list=[]
+#        for i, (b, v) in enumerate(zero_px.items()):
+#            # flip values so that 0 is the starting point instead of end
+#            flipped_vals = v[::-1].dropna().values
+#            d_list.append(pd.DataFrame(data=flipped_vals, columns=[b], index=np.arange(0, len(flipped_vals))))
+#        zero_aligned_x = pd.concat(d_list, axis=1)
+#        #print(zero_aligned_x.shape, zero_py.shape)
+#    else:
+#        zero_aligned_x = zero_px.copy()
+#        zero_aligned_y = zero_py.copy()
+#        
+#    max_ix = [i for i, v in zero_aligned_x.iterrows() if len(np.where(np.isfinite(v))[0])>=min_bouts_to_average][-1]
+#    avgx = zero_aligned_x.iloc[0:max_ix].mean(axis=1)
+#    avgy = zero_aligned_y.iloc[0:max_ix].mean(axis=1)
+#
+#    return zero_aligned_x, zero_aligned_y, avgx, avgy
+#
 
 
 
@@ -248,6 +360,81 @@ def calculate_tortuosity_metrics(df, xdist_cutoff=1.9, xvar='ft_posx', yvar='ft_
 
     last_outbout = df[~df['instrip']]['boutnum'].max()
     max_boutnum = df['boutnum'].max()
+    skip_last_bout = last_outbout==max_boutnum
+
+    # do it
+    d_list = []
+    for bnum, bdf in df[~df['instrip']].groupby('boutnum'):
+        if bnum == last_outbout and skip_last_bout:
+            continue
+        max_ix = np.argmax(bdf[xvar])
+        if max_ix==0: # this bout is flipped out to negative side, do flipLR
+            bdf['ft_posx'], bdf['ft_posy'] = util.fliplr_coordinates(bdf['ft_posx'].values, \
+                                             bdf['ft_posy'].values)
+            max_ix = np.argmax(bdf[xvar])
+            print(max_ix)
+        min_ix = np.argmin(bdf[xvar])
+        maxdist_x = bdf.iloc[max_ix][xvar] - bdf.iloc[min_ix][xvar]
+        if maxdist_x < xdist_cutoff:
+            continue
+
+        outbound_traj = bdf.iloc[0:max_ix][[xvar, yvar]].values
+        inbound_traj = bdf.iloc[max_ix:][[xvar, yvar]].values
+        # path length
+        pathlength_out = util.path_length(outbound_traj)
+        pathlength_in = util.path_length(inbound_traj)
+        # tortuosity 
+        tort_outbound = util.calculate_tortuosity(outbound_traj)
+        tort_inbound = util.calculate_tortuosity(inbound_traj)
+        # efficiency of path
+        xpathlength_out = util.path_length(outbound_traj, axis='x')
+        xpathlength_in = util.path_length(inbound_traj, axis='x')
+
+        # combine
+        d_ = pd.DataFrame({
+            'boutnum': [bnum]*2,
+            'boutdir': ['outbound', 'inbound'],
+            'pathlength': [pathlength_out, pathlength_in],
+            'tortuosity': [tort_outbound, tort_inbound],
+            'xpath_length': [xpathlength_out, xpathlength_in],
+            'efficiency': [xpathlength_out/maxdist_x, xpathlength_in/maxdist_x],
+            'maxdist_x': [maxdist_x]*2,
+            'max_xpos': [bdf.iloc[max_ix]['ft_posx']]*2,
+            'max_ix': [max_ix]*2,
+        })
+
+        d_list.append(d_)
+
+    tortdf = pd.concat(d_list,axis=0).reset_index(drop=True)
+    
+    return tortdf
+
+def plot_tortuosity_metrics(tortdf, cdf=False,
+                            boutdir_palette={'outbound': 'cyan', 'inbound': 'violet'}):
+    fig, axn = pl.subplots(1, 3, figsize=(8,4))
+    ax=axn[0]
+    ax=sns.histplot(data=tortdf, x='pathlength', hue='boutdir', ax=ax, palette=boutdir_palette,
+                 cumulative=cdf, fill=False, element='poly', stat='probability',
+                 common_norm=False)
+    ax=axn[1]
+    ax=sns.histplot(data=tortdf, x='tortuosity', hue='boutdir', ax=ax, palette=boutdir_palette,
+                 cumulative=cdf, fill=False, element='poly', stat='probability',
+                 common_norm=False)
+    ax=axn[2]
+    ax=sns.histplot(data=tortdf, x='efficiency', hue='boutdir', ax=ax, palette=boutdir_palette,
+                 cumulative=cdf, fill=False, element='poly', stat='probability',
+                 common_norm=False)
+    for ai, ax in enumerate(axn):
+        ax.set_box_aspect(1)
+        if ai==2:
+            h, l = ax.get_legend_handles_labels()
+            #l = ax.legend_data.keys()
+            sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1), frameon=False)
+        else:
+            ax.legend_.remove()
+    pl.subplots_adjust(left=0.1, right=0.85, wspace=0.5)
+    return fig
+
 
 # util.set_sns_style(style='dark', min_fontsize=12)
 
