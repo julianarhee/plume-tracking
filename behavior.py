@@ -378,7 +378,7 @@ def load_dataframe(fpath, verbose=False, experiment=None,
         datestr = int(df0['date'].unique())
         # 20200720: latest date for PAM_starved-flies (vertical_strip)
         # 20200925: latest date for PAM_activateion_fed-flies
-        if int(datestr) <= 20200925:
+        if int(datestr) <= 20200925 or int(datestr)>=20230101:
             df0['led_on'] = df0['led1_stpt']==1 
         else:
             df0['led_on'] = df0['led1_stpt']==0
