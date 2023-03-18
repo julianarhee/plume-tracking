@@ -1036,44 +1036,53 @@ def find_crossovers(df_, strip_width=50):
     return crossover_bouts
 
 def calculate_et_params(curr_bouts):
-    first_instrip_bout = curr_bouts[curr_bouts['instrip']]['boutnum'].min() 
-    #n_outside = len(curr_bouts[(~curr_bouts['instrip']) \
-    #                            & (curr_bouts['boutnum']>first_instrip_bout)]['boutnum'].unique())
-    n_outside = len(curr_bouts[~curr_bouts['instrip']]['boutnum'].unique())
+    curr_params={}
+    try:
+        first_instrip_bout = curr_bouts[curr_bouts['instrip']]['boutnum'].min() 
+        #n_outside = len(curr_bouts[(~curr_bouts['instrip']) \
+        #                            & (curr_bouts['boutnum']>first_instrip_bout)]['boutnum'].unique())
+        n_outside = len(curr_bouts[~curr_bouts['instrip']]['boutnum'].unique())
 
-    upwind_dists = curr_bouts.groupby('boutnum', group_keys=True).apply(lambda x: x['ft_posy'].max() - x['ft_posy'].min())
+        upwind_dists = curr_bouts.groupby('boutnum', group_keys=True).apply(lambda x: x['ft_posy'].max() - x['ft_posy'].min())
 
-    aggregate_upwind_dist = upwind_dists.sum()
-    #print("Aggregate:", aggregate_upwind_dist)
-    upwind_instrip_dists = curr_bouts[curr_bouts['instrip']].groupby('boutnum', group_keys=True).apply(lambda x: x['ft_posy'].max() - x['ft_posy'].min())
+        aggregate_upwind_dist = upwind_dists.sum()
+        #print("Aggregate:", aggregate_upwind_dist)
+        upwind_instrip_dists = curr_bouts[curr_bouts['instrip']].groupby('boutnum', group_keys=True).apply(lambda x: x['ft_posy'].max() - x['ft_posy'].min())
 
-    global_upwind_dist = curr_bouts['ft_posy'].max() - curr_bouts['ft_posy'].min()
-    total_instrip_upwind_dist = curr_bouts[curr_bouts['instrip']]['ft_posy'].max() - curr_bouts[curr_bouts['instrip']]['ft_posy'].min()
+        global_upwind_dist = float(curr_bouts['ft_posy'].max()) - float(curr_bouts['ft_posy'].min())
+        total_instrip_upwind_dist = curr_bouts[curr_bouts['instrip']]['ft_posy'].max() - curr_bouts[curr_bouts['instrip']]['ft_posy'].min()
 
-    max_instrip_upwind_dist = upwind_instrip_dists.max()
-    sum_instrip_upwind_dist = upwind_instrip_dists.sum()
-    max_instrip_upwind_percent = max_instrip_upwind_dist / global_upwind_dist #aggregate_upwind_dist if aggregate_upwind_dist>0 else 0
+        max_instrip_upwind_dist = float(upwind_instrip_dists.max())
+        sum_instrip_upwind_dist = float(upwind_instrip_dists.sum())
+        max_instrip_upwind_percent = max_instrip_upwind_dist / global_upwind_dist #aggregate_upwind_dist if aggregate_upwind_dist>0 else 0
 
-    curr_params = {
-            'n_outside_bouts': n_outside, 
-            'aggregate_upwind_dist': aggregate_upwind_dist, 
-            'global_upwind_dist': global_upwind_dist,
-            'max_instrip_upwind_dist': max_instrip_upwind_dist,
-            'max_instrip_upwind_percent': max_instrip_upwind_percent,
-            'sum_instrip_upwind_dist': sum_instrip_upwind_dist,
-            'total_instrip_upwind_dist': total_instrip_upwind_dist,
-    }
+        curr_params = {
+                'n_outside_bouts': n_outside, 
+                'aggregate_upwind_dist': aggregate_upwind_dist, 
+                'global_upwind_dist': global_upwind_dist,
+                'max_instrip_upwind_dist': max_instrip_upwind_dist,
+                'max_instrip_upwind_percent': float(max_instrip_upwind_percent),
+                'sum_instrip_upwind_dist': sum_instrip_upwind_dist,
+                'total_instrip_upwind_dist': total_instrip_upwind_dist,
+        }
+    except Exception as e:
+        print(e)
 
     return curr_params
 
-def get_edgetracking_params(df, strip_width=50, split_at_crossovers=True,
-                        crop_first_last=True):
+def get_edgetracking_params(df0, strip_width=50, split_at_crossovers=True,
+                        crop_first_last=True, bout_thresh=0.5):
     '''
     Calculate chunks of tracking (split by crossover events).
     Return dict of params for each found chunk. Len of keys is N crossovers.
     '''
     etparams={}
-    xovers = find_crossovers(df, strip_width=strip_width)
+    xovers = find_crossovers(df0, strip_width=strip_width)
+
+    # find too short bouts:
+    boutdurs = get_bout_durs(df0, bout_varname='boutnum')
+    too_short = [k for k, v in boutdurs.items() if v < bout_thresh]
+    df = df0[~d0['boutnum'].isin(too_short)].copy()
 
     if split_at_crossovers:
         # add last bout
@@ -1108,7 +1117,6 @@ def get_edgetracking_params(df, strip_width=50, split_at_crossovers=True,
         #max_boutnum = last_outstrip_bout-1 if skip_last_bout else df['boutnum'].max()
         curr_bouts = df[(df['boutnum']<=last_instrip_bout) 
                         & (df['boutnum']>=first_instrip_bout)].copy()
-
         curr_params = calculate_et_params(curr_bouts)
         #print(last_instrip_bout, curr_params)
         curr_params.update( {'crossover_bouts': xovers}) 
@@ -1155,13 +1163,16 @@ def is_edgetracking(df, etparams=None,
     passkey = {}
     for k, v in etparams.items():
         #print("curr et key:", k)
+        if 'n_outside_bouts' not in list(v.keys()):
+            # note: if 'crossover_bouts' in params dict but not n_outside_bouts, enas no tracking in odor
+            continue
 
         curr_pass_key = {
             'pass_n_outside_bouts': v['n_outside_bouts'] >= min_outside_bouts,
             'pass_global_upwind_dist': v['global_upwind_dist'] >= min_global_upwind_dist,
             #'pass_sum_instrip_upwind_dist': v['sum_instrip_upwind_dist'] >= min_sum_instrip_upwind_dist,
             'pass_aggregate_upwind_dist': v['aggregate_upwind_dist'] > min_upwind_dist,
-            'pass_instrip_upwind_percent': v['max_instrip_upwind_percent'] <= max_instrip_upwind_percent
+            'pass_instrip_upwind_percent': round(v['max_instrip_upwind_percent'], 2) < max_instrip_upwind_percent
             #'pass_max_crossover': len(xovers) < max_crossovers
         }
 
@@ -1188,7 +1199,7 @@ def is_edgetracking(df, etparams=None,
 # Data processing
 # ----------------------------------------------------------------------
 def process_df(df, xvar='ft_posx', yvar='ft_posy', fliplr=False,
-                bout_thresh=0.5, switch_method='previous',
+                bout_thresh=0.5, filter_duration=True, switch_method='previous',
                 smooth=False, fs=60, fc=7.5, verbose=False):
     '''
     Parse trajectory into bouts (filter too-short bouts).
@@ -1219,7 +1230,8 @@ def process_df(df, xvar='ft_posx', yvar='ft_posy', fliplr=False,
         # parse in and out bouts
         df_ = parse_bouts(df_, count_varname='instrip', bout_varname='boutnum') # 1-count
         # filter in and out bouts by min. duration 
-        df_ = filter_bouts_by_dur(df_, bout_thresh=bout_thresh, verbose=verbose,
+        if filter_duration:
+            df_ = filter_bouts_by_dur(df_, bout_thresh=bout_thresh, verbose=verbose,
                             bout_varname='boutnum', count_varname='instrip', 
                             switch_method=switch_method)
         # add some calculations
@@ -1471,17 +1483,28 @@ def filter_bouts_by_dur(df, bout_thresh=0.5, bout_varname='boutnum',
             #df_  = df[df['stopboutnum']==boutnum].copy()
             if boutdurs[boutnum] < bout_thresh:
                 reassign_value=True
+                # do not reassign bout number if checking for stops and fly is stopped
                 if bout_varname=='stopboutnum' and bool(df_[count_varname].unique())==False:
-                    #print("{} dont reassign".format(boutnum))
                     reassign_value = False
+
                 if reassign_value:
                     if boutnum == 1:
-                        print("Changing 1st bout")
+                        print("Changing 1st bout") 
                         print(count_varname, df_[count_varname].unique())
-                        prev_value = not bool(df_[count_varname].unique())
+                        # glitch, assign to whhatever the next is
+                        new_value = df_.loc[df_['boutnum']==2, count_varname].unique()[0] #not bool(df_[count_varname].unique())
                     else:
-                        prev_value = df[df[bout_varname]==(boutnum-1)].iloc[-1][count_varname]
-                    df.loc[df[bout_varname]==boutnum, count_varname] = prev_value
+                        # if current bout is IN, not enough time for odor to fully turn on (~0.5s to turn on), so should be outside bout:
+                        if all(df_['instrip'].unique()):
+                            print("[bout {}]  too short instrip, should be OUT".format(boutnum))
+                            new_value = False
+                        else:
+                            print("[bout {}]  too short outstrip, should be IN".format(boutnum))
+
+                            # current bout is OUT, but not enough time for odor to turn off, so count as an inside bout:
+                            new_value = True
+                        #prev_value = df[df[bout_varname]==(boutnum-1)].iloc[-1][count_varname]
+                    df.loc[df[bout_varname]==boutnum, count_varname] = new_value #prev_value
 
 #        for boutnum, df_ in df.groupby(bout_varname):
 #            if boutdurs[boutnum] < bout_thresh:
@@ -2785,10 +2808,13 @@ def get_bout_metrics(etdf1):
     fix_cols = [c for c in check_cols if c not in non_numeric]
     for c in fix_cols:
         boutdf[c] = boutdf[c].astype(float)
+    check_cols=[]
     for c in boutdf.columns.tolist():
+        if c in non_numeric:
+            continue
         if not pd.api.types.is_numeric_dtype(boutdf[c]):
             check_cols.append(c)
-    assert len(check_cols)==0, "Bad dtypes"
+    assert len(check_cols)==0, "Bad dtypes: {}".format(check_cols)
 
     return boutdf
 
