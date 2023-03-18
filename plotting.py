@@ -30,6 +30,30 @@ def remove_spines(ax, axes=['right', 'top']):
        ax.spines[pos].set_visible(False)
 
 
+
+def custom_legend(labels, colors, use_line=True, lw=4, markersize=10):
+    '''
+    Returns legend handles
+
+    Arguments:
+        labels -- _description_
+        colors -- _description_
+
+    Keyword Arguments:
+        use_line -- _description_ (default: {True})
+        lw -- _description_ (default: {4})
+        markersize -- _description_ (default: {10})
+
+    Returns:
+        _description_
+    '''
+    if use_line:
+        legh = [mpl.lines.Line2D([0], [0], color=c, label=l, lw=lw) for c, l in zip(colors, labels)]
+    else:
+        legh = [mpl.lines.Line2D([0], [0], marker='o', color='w', label=l, lw=0,
+                    markerfacecolor=c, markersize=markersize) for c, l in zip(colors, labels)]
+
+    return legh
 ##
 
 def zero_trajectory(df_):
@@ -152,9 +176,9 @@ def plot_paired_in_vs_out(varn, df_, ax=None,
 def flip_data_for_abutting_hists(boutdf_filt,
         hue='instrip', hue_values=[True, False],
         vars_to_abs = ['speed', 'upwind_speed', 'crosswind_speed'],
-        vars_to_flip = ['duration', 'abs_speed', 'path_length', 
+        vars_to_flip = ['duration', 'speed_abs', 'path_length', 
                         'path_length_x', 'path_length_y', 'crosswind_dist_range', 
-                        'abs_upwind_speed', 'upwind_dist_range', 'abs_crosswind_speed']):
+                        'upwind_speed_abs', 'upwind_dist_range', 'crosswind_speed_abs']):
     '''
     Flip inside bout metrics so that in and out histograms and plots can be 
     visualized abutting each other. Need to do this for plot_sorted_distn_with_hist()
@@ -163,7 +187,9 @@ def flip_data_for_abutting_hists(boutdf_filt,
     '''
     v1, v2 = hue_values
     for varn in vars_to_abs:
-        boutdf_filt['abs_{}'.format(varn)] = boutdf_filt[varn].abs()
+        new_varn = '{}_abs'.format(varn)
+        boutdf_filt[new_varn]=None
+        boutdf_filt[new_varn] = boutdf_filt[varn].abs()
 
     for varn in vars_to_flip:
         new_varn = '{}_flipped'.format(varn)
@@ -175,7 +201,7 @@ def flip_data_for_abutting_hists(boutdf_filt,
     return boutdf_filt
 
 def plot_sorted_distn_with_hist(varn, boutdf_filt, estimator='median',
-                             plot_bars=False, errorbar=('ci', 95),
+                             plot_bars=False, errorbar=('ci', 95), varn_type='flipped',
                             hue='instrip', hue_values=[True, False], hue_colors=['r', 'w']):
     '''
     Plot each individual fly's bouts as dot plot, abutting inside and outside.
@@ -188,13 +214,16 @@ def plot_sorted_distn_with_hist(varn, boutdf_filt, estimator='median',
         'path_length': 'path length (mm)',
         'path_length_x': 'x-path length (mm)',
         'path_length_y': 'y-path length(mm)',
-        'abs_speed': 'abs. speed (mm/s)',
-        'abs_upwind_speed': 'abs. upwind speed (mm/s)',
-        'abs_crosswind_speed': 'abs. crosswind speed (mm/s)',
+        'speed': 'abs. speed (mm/s)',
+        'upwind_speed': 'abs. upwind speed (mm/s)',
+        'crosswind_speed': 'abs. crosswind speed (mm/s)',
         'upwind_dist_range': 'upwind range (mm)',
         'crosswind_dist_range': 'crosswind range (mm)'
     }
-    plotvar = '{}_flipped'.format(varn) 
+    if varn_type=='abs':
+        plotvar = '{}_{}_flipped'.format(varn, varn_type) 
+    else:
+        plotvar = '{}_flipped'.format(varn)
 
     if estimator == 'median':
         mean_boutdf_filt2 = boutdf_filt.groupby(['filename', hue]).median().reset_index()
@@ -387,12 +416,16 @@ def plot_one_flys_trials(df_, instrip_palette={True: 'r', False: 'w'},
 
 
 
-def plot_array_of_trajectories(trajdf, sorted_eff=[], nr=5, nc=7, aspect_ratio=0.5,
+def plot_array_of_trajectories(trajdf, sorted_eff=[], nr=5, nc=7, 
+                            aspect_ratio=0.5, sharey=True,
                             bool_colors=['r'], bool_vars=['instrip'], title='filename'):
 
     if len(sorted_eff)==0:
-        sorted_eff = trajdf['filename'].unique()
+        sorted_eff = sorted(trajdf['filename'].unique(), key=util.natsort)
 
+
+    maxy = trajdf['ft_posy'].max() if not sharey else 1600
+     
     fig, axn = pl.subplots(nr, nc, figsize=(15,8), sharex=True)
     for fi, fn in enumerate(sorted_eff): #(fn, df_) in enumerate(etdf.groupby('filename')):
         if fi >= nr*nc:
@@ -413,13 +446,13 @@ def plot_array_of_trajectories(trajdf, sorted_eff=[], nr=5, nc=7, aspect_ratio=0
             butil.vertical_scalebar(ax, leg_xpos=leg_xpos, leg_ypos=leg_ypos)
         #ax.set_box_aspect(3)
         ax.set_xlim([-150, 150])
-        ax.set_ylim([-100, 1600])
+        ax.set_ylim([-100, maxy])
         ax.axis('off')
         ax.set_aspect(aspect_ratio)
         if title=='filename':
             ax_title = fn
         else:
-            ax_title = df_['fly_id'].unique()[0]
+            ax_title = fn.split('_')[0] # use datetime str 
         ax.set_title('{}:\n{}'.format(fi, ax_title), fontsize=6, loc='left')
 
     for ax in axn.flat[fi:]:
