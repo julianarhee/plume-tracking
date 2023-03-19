@@ -174,7 +174,7 @@ def plot_paired_in_vs_out(varn, df_, ax=None,
 
 
 def flip_data_for_abutting_hists(boutdf_filt,
-        hue='instrip', hue_values=[True, False],
+        hue='instrip', hue_values=[True, False], offset=0,
         vars_to_abs = ['speed', 'upwind_speed', 'crosswind_speed'],
         vars_to_flip = ['duration', 'speed_abs', 'path_length', 
                         'path_length_x', 'path_length_y', 'crosswind_dist_range', 
@@ -194,8 +194,12 @@ def flip_data_for_abutting_hists(boutdf_filt,
     for varn in vars_to_flip:
         new_varn = '{}_flipped'.format(varn)
         boutdf_filt[new_varn] = None
-        boutdf_filt.loc[boutdf_filt[hue]==v1, new_varn]  = -1*boutdf_filt.loc[boutdf_filt[hue]==v1, varn].values
-        boutdf_filt.loc[boutdf_filt[hue]==v2, new_varn]  = 1*boutdf_filt.loc[boutdf_filt[hue]==v2, varn].values
+        if varn in ['max_dist_from_edge', 'min_dist_from_edge']:
+            # don't need to flip, already signed +/- relative to edge 
+            boutdf_filt[new_varn] = boutdf_filt[varn]
+        else:
+            boutdf_filt.loc[boutdf_filt[hue]==v1, new_varn]  = -1*boutdf_filt.loc[boutdf_filt[hue]==v1, varn].values - offset
+            boutdf_filt.loc[boutdf_filt[hue]==v2, new_varn]  = 1*boutdf_filt.loc[boutdf_filt[hue]==v2, varn].values + offset
         boutdf_filt[new_varn] = boutdf_filt[new_varn].astype(float)
         
     return boutdf_filt
