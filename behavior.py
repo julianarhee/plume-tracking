@@ -439,7 +439,7 @@ def load_dataframe(fpath, verbose=False, experiment=None,
 
     return df0
 
-def check_ft_skips(df, plot=False, remove_invalid=True, figpath=None, verbose=False, acquisition_rate=60):
+def check_ft_skips(df0, plot=False, remove_invalid=True, figpath=None, verbose=False, acquisition_rate=60):
     '''
     Check dataframe of current logfile and find large skips.
 
@@ -454,6 +454,9 @@ def check_ft_skips(df, plot=False, remove_invalid=True, figpath=None, verbose=Fa
        df (pd.DataFrame) : either just itself or valid only
        valid_flag (bool) : True if bad skips detected
     '''
+    odor_ix = df0[df0['instrip']].iloc[0].name
+    df = df0.loc[odor_ix:].copy()
+
     fname = df['filename'].unique()
     bad_skips={}
     poslim = 300 # 100 mm/s
@@ -629,7 +632,8 @@ def load_combined_df(src_dir=None, log_files=None, logdf=None, is_csv=False,
                 create_new=False, verbose=False, save_errors=True, 
                 remove_invalid=True, fliplr=True,
                 process=True, save=True, parse_filename=True, 
-                return_errors=False,
+                return_errors=False, fps=60, 
+                combined_fbase='combined_df',
                 rootdir='/Users/julianarhee/Library/CloudStorage/GoogleDrive-edge.tracking.ru@gmail.com/My Drive/Edge_Tracking/Data'):
     '''
     _summary_
@@ -670,7 +674,7 @@ def load_combined_df(src_dir=None, log_files=None, logdf=None, is_csv=False,
             src_dir = os.path.split(log_files[0])[0]
         savedir = src_dir.split('/raw')[0]
     # first, check if combined df exists
-    df_fpath = os.path.join(savedir, 'combined_df.pkl')
+    df_fpath = os.path.join(savedir, '{}.pkl'.format(combined_fbase))
     if create_new is False:
         if os.path.exists(df_fpath):
             print("loading existing combined df")
@@ -732,11 +736,11 @@ def load_combined_df(src_dir=None, log_files=None, logdf=None, is_csv=False,
             if process:
                 if verbose:
                     print("---> processing")
-                df = process_df(df, verbose=verbose)
+                df = process_df(df, verbose=verbose, fps=fps)
             # save
             if save:
                 print("Saving combined df to: {}".format(savedir))
-                save_df(df, df_fpath)
+                save_df(df, df_fpath)# , fname=combined_fbase)
         except Exception as e:
             print(e)
 
@@ -1200,7 +1204,7 @@ def is_edgetracking(df, etparams=None,
 # ----------------------------------------------------------------------
 def process_df(df, xvar='ft_posx', yvar='ft_posy', fliplr=False,
                 bout_thresh=0.5, filter_duration=True, switch_method='previous',
-                smooth=False, fs=60, fc=7.5, verbose=False):
+                smooth=False, fps=60, fc=7.5, verbose=False):
     '''
     Parse trajectory into bouts (filter too-short bouts).
     Calculate speed and distance between each point.
@@ -2735,7 +2739,21 @@ def calculate_bout_metrics(b_, heading_vars=['ft_heading', 'heading'],
     path_length = util.path_length(coords) #b_['euclid_dist'].sum() -  b_['euclid_dist'].iloc[0],
     path_length_x = util.path_length(coords, axis='x')
     path_length_y = util.path_length(coords, axis='y')
- 
+
+
+    if 'dist_from_edge' in b_.columns.tolist():
+        max_dist_from_edge = b_['dist_from_edge'].max()
+        min_dist_from_edge = b_['dist_from_edge'].min()
+        max_dist_from_edge_abs = b_['dist_from_edge_abs'].max()
+        min_dist_from_edge_abs = b_['dist_from_edge_abs'].min()
+
+    else:
+        max_dist_from_edge = None
+        min_dist_from_edge=None
+        max_dist_from_edge_abs = None
+        min_dist_from_edge_abs=None
+       
+
     mdict = {
         'duration': b_['time'].iloc[-1] - b_['time'].iloc[0],
         'upwind_dist_range': b_['ft_posy'].max() - b_['ft_posy'].min(),
@@ -2745,6 +2763,11 @@ def calculate_bout_metrics(b_, heading_vars=['ft_heading', 'heading'],
         'path_length': path_length,
         'path_length_x': path_length_x,
         'path_length_y': path_length_y,
+        'max_dist_from_edge': max_dist_from_edge,
+        'min_dist_from_edge': min_dist_from_edge,
+        'max_dist_from_edge_abs': max_dist_from_edge_abs,
+        'min_dist_from_edge_abs': min_dist_from_edge_abs,
+
         #'average_heading': sts.circmean(b_['ft_heading'], low=theta_range[0], high=theta_range[1]),
         'rel_time': b_['rel_time'].iloc[0],
         'n_frames': len(b_['ft_frame'].unique())
@@ -2883,7 +2906,7 @@ def vertical_scalebar(ax, leg_xpos=0, leg_ypos=0, leg_scale=100):
     ax.text(leg_xpos-5, leg_ypos+(leg_scale/2), '{} mm'.format(leg_scale), fontsize=12, horizontalalignment='right')
     #ax.axis('off')
     
-def zero_odor_start(df0):
+def zero_to_odor_start(df0):
     df = df0.copy()
     odor_start_x = float(df[df['instrip']].iloc[0]['ft_posx'])
     odor_start_y = float(df[df['instrip']].iloc[0]['ft_posy'])
@@ -2900,7 +2923,7 @@ def plot_trajectory_from_file(fpath, parse_filename=False,
             fliplr=True, remove_invalid=True, plot_errors=False,
             strip_width=10, strip_sep=200, ax=None,  
             zero_odor_start=False, start_at_odor=False, markersize=0.5,
-            hue_varname='instrip', palette={True: 'r', False: 'w'}):
+            hue_varname='instrip', palette={True: 'r', False: 'w'}, fps=60):
     # load and process the csv data  
     df0 = load_dataframe(fpath, verbose=False, #cond=None, 
                 parse_filename=False, fliplr=fliplr, 
@@ -2920,7 +2943,7 @@ def plot_trajectory_from_file(fpath, parse_filename=False,
     #                        strip_sep=strip_sep, use_crossings=True, verbose=False )
     #(odor_xmin, odor_xmax), = ogrid.values()
     #odor_bounds = list(ogrid.values())
-    df0 = process_df(df0)
+    df0 = process_df(df0, fps=fps)
     strip_borders = find_strip_borders(df0, strip_width=strip_width, strip_sep=strip_sep, 
                                 entry_ix=None)
     title = os.path.splitext(os.path.split(fpath)[-1])[0]
@@ -2949,10 +2972,13 @@ def plot_trajectory(df0, odor_bounds=[], ax=None,
         start_ix = df0.iloc[0].name
 
     df = df0.loc[start_ix:].copy()
-    
+
+    odor_start_x = float(df[df['instrip']].iloc[0]['ft_posx'])
+    odor_start_y = float(df[df['instrip']].iloc[0]['ft_posy'])
+   
     if zero_odor_start:
         print("...zeroing to odor start")
-        df = zero_odor_start(df)
+        df = zero_to_odor_start(df)
         for i, (om, oM) in enumerate(odor_bounds):
            odor_bounds[i] = (om - odor_start_x, oM - odor_start_x)
     # plot trajectory
