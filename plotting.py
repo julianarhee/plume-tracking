@@ -59,12 +59,17 @@ def custom_legend(labels, colors, use_line=True, lw=4, markersize=10):
 def zero_trajectory(df_):
 
     plotdf = df_.copy()
-    offset_x = plotdf[plotdf['instrip']].iloc[0]['ft_posx']
-    offset_y = plotdf[plotdf['instrip']].iloc[0]['ft_posy']
+    if True not in plotdf['instrip'].unique():
+        offset_x = plotdf.iloc[0]['ft_posx']
+        offset_y = plotdf.iloc[0]['ft_posy']
+        odor_ix = plotdf.iloc[0].name
+    else:
+        offset_x = plotdf[plotdf['instrip']].iloc[0]['ft_posx']
+        offset_y = plotdf[plotdf['instrip']].iloc[0]['ft_posy']
+        odor_ix = plotdf[plotdf['instrip']].iloc[0].name
+
     plotdf['ft_posx'] = plotdf['ft_posx'].values - offset_x
-    plotdf['ft_posy'] = plotdf['ft_posy'].values - offset_y
-    
-    odor_ix = plotdf[plotdf['instrip']].iloc[0].name
+    plotdf['ft_posy'] = plotdf['ft_posy'].values - offset_y 
 
     return plotdf.loc[odor_ix:]
 
@@ -81,34 +86,37 @@ def normalize_position(b_):
 
 
 def plot_zeroed_trajectory(df_, ax=None, traj_lw=1.5, odor_lw=1.0,
-                        strip_width=50, strip_sep=1000, main_col='w',
-                        bool_colors=['r'], bool_vars=['instrip']):
+                        strip_width=50, strip_sep=1000, plot_odor_strip=True,
+                        main_col='w', bool_colors=['r'], bool_vars=['instrip']):
     if ax is None:
         fig, ax= pl.subplots()
     odor_ix = df_[df_['instrip']].iloc[0].name
     #plotdf = df_.loc[odor_ix:]
     # odor_ix = params[fn]['odor_ix']
     plotdf = zero_trajectory(df_)
-    odor_ix = plotdf[plotdf['instrip']].iloc[0].name
-    odor_bounds = butil.find_strip_borders(plotdf, entry_ix=odor_ix,
+    if plot_odor_strip:
+        odor_ix = plotdf[plotdf['instrip']].iloc[0].name
+        odor_bounds = butil.find_strip_borders(plotdf, entry_ix=odor_ix,
                                         strip_width=strip_width,
                                         strip_sep=strip_sep)
-    # plot
-    plotdf = plotdf.loc[odor_ix:].copy()
-    
-    ax.plot(plotdf['ft_posx'], plotdf['ft_posy'], lw=traj_lw, c=main_col)
-    for ob in odor_bounds:
-        butil.plot_odor_corridor(ax, odor_xmin=ob[0], 
+        for ob in odor_bounds:
+            butil.plot_odor_corridor(ax, odor_xmin=ob[0], 
                              odor_xmax=ob[1], odor_linewidth=odor_lw)
+    else:
+        odor_ix = plotdf.iloc[0].name
+    # plot
+    plotdf = plotdf.loc[odor_ix:].copy() 
+    ax.plot(plotdf['ft_posx'], plotdf['ft_posy'], lw=traj_lw, c=main_col)
 
     for col, boolvar in zip(bool_colors, bool_vars):
         for bnum, b_ in plotdf[plotdf[boolvar]].groupby('boutnum'):
+            #cols = [col if v==True else 'none' for v in b_[boolvar].values]
             ax.plot(b_['ft_posx'], b_['ft_posy'], lw=traj_lw, c=col)
 
     return ax
 
 
-def plot_paired_inout_metrics(df_, nr=2, nc=3,
+def plot_paired_inout_metrics(df_, nr=2, nc=3, pair_by='filename',
                 xvarname='instrip', order=[False, True], xticklabels=['outstrip', 'instrip'],
                 yvarnames=['duration', 'path_length',
                 'crosswind_speed', 'upwind_speed', 
@@ -117,10 +125,10 @@ def plot_paired_inout_metrics(df_, nr=2, nc=3,
 
     fig, axn = pl.subplots(nr, nc, figsize=(10,5)) #len(varnames))
     for ax, varn in zip(axn.flat, yvarnames):
-        plot_paired_in_vs_out(varn, df_, ax=ax, 
+        plot_paired_in_vs_out(varn, df_, ax=ax, pair_by=pair_by,
                     xvarname=xvarname, order=order, xticklabels=xticklabels)
         #a = df_[df_['instrip']][['filename', varn]]
-        a = df_['filename'].unique()
+        a = df_[pair_by].unique()
         dof = len(a)-1
         fig.text(0.75, 0.06, 'Wilcoxon signed-rank, n={} trajectories'.format(len(a)),
                 fontsize=10)
@@ -128,7 +136,7 @@ def plot_paired_inout_metrics(df_, nr=2, nc=3,
     
     return fig
 
-def plot_paired_in_vs_out(varn, df_, ax=None, 
+def plot_paired_in_vs_out(varn, df_, ax=None, pair_by='filename',
                 xvarname='instrip', order=[False, True],
                 xticklabels=['outstrip', 'instrip']):
     if ax is None:
@@ -143,10 +151,14 @@ def plot_paired_in_vs_out(varn, df_, ax=None,
                     c='w', s=3, jitter=False)
     # plot paired lines
     v1, v2 = order
-    for f, fd in df_.groupby('filename'):
-        ax.plot([0, 1],
-            [fd[fd[xvarname]==v1][varn], fd[fd[xvarname]==v2][varn]],
-                'w', lw=0.5)
+    for f, fd in df_.groupby(pair_by):
+        x_ = fd[fd[xvarname]==v1][varn]
+        y_ = fd[fd[xvarname]==v2][varn]
+        if len(x_)>1: 
+            x_ = np.nanmean(x_)
+        if len(y_)>1:
+            y_ = np.nanmean(y_)
+        ax.plot([0, 1], [x_, y_], 'w', lw=0.5)
     # adjust ticks
     ax.tick_params(which='both', axis='both', length=2, width=0.5, color='w',
                    direction='out', left=True)
@@ -157,8 +169,12 @@ def plot_paired_in_vs_out(varn, df_, ax=None,
     ax.set_xlim([-0.5, 1.5])
     ax.set_xticklabels(xticklabels) #['outstrip', 'instrip'])
     # stats
-    a = df_[df_[xvarname]==v1][varn].values
-    b = df_[df_[xvarname]==v2][varn].values
+    oneval_per= df_.groupby([pair_by, xvarname], as_index=False).mean()
+    a = oneval_per[oneval_per[xvarname]==v1][varn].values
+    b = oneval_per[oneval_per[xvarname]==v2][varn].values
+
+    #a = df_[df_[xvarname]==v1][varn].values
+    #b = df_[df_[xvarname]==v2][varn].values
     pdf = pd.DataFrame({'a': a, 'b': b})
     T, pv = spstats.wilcoxon(pdf["a"], pdf["b"], nan_policy='omit')
     if pv>=0.05:
@@ -422,7 +438,8 @@ def plot_one_flys_trials(df_, instrip_palette={True: 'r', False: 'w'},
 
 def plot_array_of_trajectories(trajdf, sorted_eff=[], nr=5, nc=7, 
                             aspect_ratio=0.5, sharey=True,
-                            bool_colors=['r'], bool_vars=['instrip'], title='filename'):
+                            bool_colors=['r'], bool_vars=['instrip'], title='filename',
+                            notable=[]):
 
     if len(sorted_eff)==0:
         sorted_eff = sorted(trajdf['filename'].unique(), key=util.natsort)
@@ -457,7 +474,10 @@ def plot_array_of_trajectories(trajdf, sorted_eff=[], nr=5, nc=7,
             ax_title = fn
         else:
             ax_title = fn.split('_')[0] # use datetime str 
-        ax.set_title('{}:\n{}'.format(fi, ax_title), fontsize=6, loc='left')
+        if fn in notable:
+            ax.set_title('{}:\n*{}'.format(fi, ax_title), fontsize=6, loc='left')
+        else:
+            ax.set_title('{}:\n{}'.format(fi, ax_title), fontsize=6, loc='left')
 
     for ax in axn.flat[fi:]:
         ax.axis('off')
