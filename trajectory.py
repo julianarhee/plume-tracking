@@ -73,10 +73,29 @@ def load_df(fpath):
     return df0_full, oparams#odor_ix, odor_bounds, strip_width, strip_sep
 
 def find_et_bouts(df0, odor_bounds, strip_width=50, strip_sep=1000, 
-                   max_instrip_upwind_percent=0.4, 
-                   max_crossovers=2, min_outside_bouts=5, 
-                   min_global_upwind_dist=500):
+                   max_instrip_upwind_percent=0.5, 
+                   max_crossovers=3, min_outside_bouts=5, 
+                   min_global_upwind_dist=100,
+                   max_crossover_to_dist_ratio=2/500):
+    '''
+    Find edge tracking bouts in a trajectory. Starts from first OUT bout, ends with last IN bout.
 
+
+    Arguments:
+        df0 -- _description_
+        odor_bounds -- _description_
+
+    Keyword Arguments:
+        strip_width -- _description_ (default: {50})
+        strip_sep -- _description_ (default: {1000})
+        max_instrip_upwind_percent -- _description_ (default: {0.4})
+        max_crossovers -- _description_ (default: {2})
+        min_outside_bouts -- _description_ (default: {5})
+        min_global_upwind_dist -- _description_ (default: {500})
+
+    Returns:
+        _description_
+    '''
     #max_instrip_upwind_percent = 0.4 #250 #250
     #min_global_upwind_dist = 300
     #max_crossovers=2
@@ -127,8 +146,9 @@ def find_et_bouts(df0, odor_bounds, strip_width=50, strip_sep=1000,
                             crop_first_last=False,
                             min_outside_bouts=min_outside_bouts,
                             max_crossovers=max_crossovers,
-                            #min_global_upwind_dist=min_global_upwind_dist, 
-                            max_instrip_upwind_percent=max_instrip_upwind_percent
+                            min_global_upwind_dist=min_global_upwind_dist, 
+                            max_instrip_upwind_percent=max_instrip_upwind_percent,
+                            max_crossover_to_dist_ratio=max_crossover_to_dist_ratio
         )
         etparams[0].update({'key': 'c{}'.format(entry_ix)})
         et_boutstats.update({
@@ -212,6 +232,9 @@ def filter_first_instrip_last_outstrip(boutdf):
     for fn, df_ in boutdf.groupby('filename'):
         first_instrip = df_[df_['instrip']]['boutnum'].min()
         last_instrip = df_[df_['instrip']]['boutnum'].max()
+        if first_instrip==1 and last_instrip==1: # condition where fly just wanders off
+            first_instrip = 0 #df_[df_['instrip']]['boutnum'].min()
+            last_instrip = df_['boutnum'].max()
         tmpdf = df_[(df_['boutnum']<=last_instrip) & (df_['boutnum']>first_instrip)]
         d_list.append(tmpdf)
         #print(first_instrip, last_instrip, tmpdf.shape)
