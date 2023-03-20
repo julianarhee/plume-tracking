@@ -36,6 +36,7 @@ import seaborn as sns
 # custom
 import utils as util
 import google_drive as gdrive
+import plotting as putil
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -428,15 +429,22 @@ def load_dataframe(fpath, verbose=False, experiment=None,
     # rig is mirror-reversed, fliplr
     if fliplr:
         # FLIP L/R 
-        xp, yp = util.fliplr_coordinates(df0['ft_posx'].values, \
-                                         df0['ft_posy'].values)
-        df0['ft_posx'] = xp
-        df0['ft_posy'] = yp
+        df0 = fliplr_dataframe(df0)
 
-        hp = -1*df0['ft_heading'].values
-        df0['ft_heading'] = hp
+    return df0
 
-
+def fliplr_dataframe(df0, flip_heading=True):
+    xp, yp = util.fliplr_coordinates(df0['ft_posx'].values, \
+                                        df0['ft_posy'].values)
+    df0['ft_posx'] = xp
+    df0['ft_posy'] = yp
+    
+    if flip_heading:
+        hp = -1*df0['ft_heading'].values 
+        df0['ft_heading'] = hp 
+    #df_copy['{}_og'.format(heading_var)] = df_[heading_var].values
+    #df_copy[heading_var] = df_[heading_var].values
+    #tmpdf = -1* df_copy[df_copy['flipped']]['{}_og'.format(heading_var)]
     return df0
 
 def check_ft_skips(df0, plot=False, remove_invalid=True, figpath=None, verbose=False, acquisition_rate=60):
@@ -861,10 +869,11 @@ def check_entryside_and_flip(df_, strip_width=50, strip_sep=500, odor_dict=None,
             print('... {}: {}'.format(si, oparams['entry_left_edge']))
         if oparams['entry_left_edge']:
             # flip it
-            xp, yp = util.fliplr_coordinates(tmpdf['ft_posx'].values, tmpdf['ft_posy'].values)
+            #xp, yp = util.fliplr_coordinates(tmpdf['ft_posx'].values, tmpdf['ft_posy'].values)
                 # util.rotate_coordinates(df1['ft_posx'], df1['ft_posy'], -np.pi)
-            df_copy.loc[tmpdf.index, 'ft_posx'] = xp
-            df_copy.loc[tmpdf.index, 'ft_posy'] = yp
+            tmpdf = fliplr_dataframe(tmpdf, flip_heading=False) # do heading separate
+            df_copy.loc[tmpdf.index, 'ft_posx'] = tmpdf['ft_posx'].values# xp
+            df_copy.loc[tmpdf.index, 'ft_posy'] = tmpdf['ft_posy'].values #yp
             border_flip1, _ = util.fliplr_coordinates(obounds[0][0], 0) #oparams['odor_boundary'][0][0], 0) 
             border_flip2, _ = util.fliplr_coordinates(obounds[0][1], 0) #oparams['odor_boundary'][0][1], 0)
             df_copy.loc[tmpdf.index, 'flipped'] = True
@@ -875,7 +884,6 @@ def check_entryside_and_flip(df_, strip_width=50, strip_sep=500, odor_dict=None,
                     df_copy['{}_og'.format(heading_var)] = df_[heading_var].values
                     df_copy[heading_var] = df_[heading_var].values
                     tmpdf = df_copy[df_copy['flipped']]['{}_og'.format(heading_var)]
-
                     #df_copy['{}_og'.format(heading_var)] = df_copy[heading_var].values
                     #vals = -1*df_copy[df_copy['flipped']]['{}_og'.format(heading_var)].values
                     #df_copy.loc[df_copy['flipped'], heading_var] = vals
@@ -959,7 +967,10 @@ def check_entry_left_edge(df, entry_ix=None, nprev_steps=5,
         elif sum(entry_vals)/len(entry_vals) < 0.5:
             entry_left_edge=False
         else:
-            entry_left_edge=None
+            # use coarse measure of whether more on left or right side of 0
+            zero_ = putil.zero_trajectory(df)
+            median_x = zero_.loc[entry_ix:]['ft_posx'].median()
+            entry_left_edge = median_x < 0
     except ZeroDivisionError:
         entry_left_edge=None
 
@@ -1039,7 +1050,7 @@ def find_crossovers(df_, strip_width=50):
                          if np.ceil(b_['ft_posx'].max() - b_['ft_posx'].min()) >= strip_width]
     return crossover_bouts
 
-def calculate_et_params(curr_bouts):
+def calculate_et_params(curr_bouts, strip_width=50):
     curr_params={}
     try:
         first_instrip_bout = curr_bouts[curr_bouts['instrip']]['boutnum'].min() 
@@ -1049,32 +1060,36 @@ def calculate_et_params(curr_bouts):
 
         upwind_dists = curr_bouts.groupby('boutnum', group_keys=True).apply(lambda x: x['ft_posy'].max() - x['ft_posy'].min())
 
-        aggregate_upwind_dist = upwind_dists.sum()
+        sum_upwind_dist = upwind_dists.sum()
         #print("Aggregate:", aggregate_upwind_dist)
         upwind_instrip_dists = curr_bouts[curr_bouts['instrip']].groupby('boutnum', group_keys=True).apply(lambda x: x['ft_posy'].max() - x['ft_posy'].min())
 
         global_upwind_dist = float(curr_bouts['ft_posy'].max()) - float(curr_bouts['ft_posy'].min())
-        total_instrip_upwind_dist = curr_bouts[curr_bouts['instrip']]['ft_posy'].max() - curr_bouts[curr_bouts['instrip']]['ft_posy'].min()
+        global_upwind_dist_instrip = curr_bouts[curr_bouts['instrip']]['ft_posy'].max() - curr_bouts[curr_bouts['instrip']]['ft_posy'].min()
 
         max_instrip_upwind_dist = float(upwind_instrip_dists.max())
         sum_instrip_upwind_dist = float(upwind_instrip_dists.sum())
         max_instrip_upwind_percent = max_instrip_upwind_dist / global_upwind_dist #aggregate_upwind_dist if aggregate_upwind_dist>0 else 0
 
+        xovers = find_crossovers(curr_bouts, strip_width=strip_width)
+
         curr_params = {
                 'n_outside_bouts': n_outside, 
-                'aggregate_upwind_dist': aggregate_upwind_dist, 
+                'sum_upwind_dist': sum_upwind_dist, 
                 'global_upwind_dist': global_upwind_dist,
                 'max_instrip_upwind_dist': max_instrip_upwind_dist,
                 'max_instrip_upwind_percent': float(max_instrip_upwind_percent),
                 'sum_instrip_upwind_dist': sum_instrip_upwind_dist,
-                'total_instrip_upwind_dist': total_instrip_upwind_dist,
+                'global_upwind_dist_instrip': global_upwind_dist_instrip,
+                'n_crossovers': len(xovers),
+                'crossover_to_dist_ratio': len(xovers)/global_upwind_dist
         }
     except Exception as e:
         print(e)
 
     return curr_params
 
-def get_edgetracking_params(df0, strip_width=50, split_at_crossovers=True,
+def get_edgetracking_params(df0, strip_width=50, split_at_crossovers=False,
                         crop_first_last=True, bout_thresh=0.5):
     '''
     Calculate chunks of tracking (split by crossover events).
@@ -1086,7 +1101,7 @@ def get_edgetracking_params(df0, strip_width=50, split_at_crossovers=True,
     # find too short bouts:
     boutdurs = get_bout_durs(df0, bout_varname='boutnum')
     too_short = [k for k, v in boutdurs.items() if v < bout_thresh]
-    df = df0[~d0['boutnum'].isin(too_short)].copy()
+    df = df0[~df0['boutnum'].isin(too_short)].copy()
 
     if split_at_crossovers:
         # add last bout
@@ -1103,8 +1118,7 @@ def get_edgetracking_params(df0, strip_width=50, split_at_crossovers=True,
         for xi, xover in enumerate(xovers):
             curr_bouts = df[ (df['boutnum']<xover) & (df['boutnum']>prev_xover) \
                             & (df['boutnum']<=max_boutnum)]
-            curr_params = calculate_et_params(curr_bouts)
-
+            curr_params = calculate_et_params(curr_bouts, strip_width=strip_width)
             # print(xi, prev_xover+1, n_outside, upwind_dists.sum())
             prev_xover = xover
             etparams.update({xi: curr_params})
@@ -1121,7 +1135,7 @@ def get_edgetracking_params(df0, strip_width=50, split_at_crossovers=True,
         #max_boutnum = last_outstrip_bout-1 if skip_last_bout else df['boutnum'].max()
         curr_bouts = df[(df['boutnum']<=last_instrip_bout) 
                         & (df['boutnum']>=first_instrip_bout)].copy()
-        curr_params = calculate_et_params(curr_bouts)
+        curr_params = calculate_et_params(curr_bouts, strip_width=strip_width)
         #print(last_instrip_bout, curr_params)
         curr_params.update( {'crossover_bouts': xovers}) 
         etparams.update({0: curr_params})
@@ -1131,11 +1145,12 @@ def get_edgetracking_params(df0, strip_width=50, split_at_crossovers=True,
 
 
 def is_edgetracking(df, etparams=None,
-                    strip_width=50, split_at_crossovers=True, crop_first_last=True,
+                    strip_width=50, split_at_crossovers=False, crop_first_last=True,
                         return_key=False,
-                        min_outside_bouts=3, min_upwind_dist=200, max_crossovers=3,
-                        min_global_upwind_dist=300, min_total_instrip_upwind_dist=300,
-                        max_instrip_upwind_percent=0.8):
+                        min_outside_bouts=5, max_crossovers=3, 
+                        max_crossover_to_dist_ratio=1/500,
+                        min_global_upwind_dist=300, max_instrip_upwind_percent=0.8):
+# min_upwind_dist=200, min_total_instrip_upwind_dist=300,
                         #min_sum_instrip_upwind_dist=250):
     '''
     Set thresholds for diff params to define whether edgetracking or not.
@@ -1175,9 +1190,10 @@ def is_edgetracking(df, etparams=None,
             'pass_n_outside_bouts': v['n_outside_bouts'] >= min_outside_bouts,
             'pass_global_upwind_dist': v['global_upwind_dist'] >= min_global_upwind_dist,
             #'pass_sum_instrip_upwind_dist': v['sum_instrip_upwind_dist'] >= min_sum_instrip_upwind_dist,
-            'pass_aggregate_upwind_dist': v['aggregate_upwind_dist'] > min_upwind_dist,
-            'pass_instrip_upwind_percent': round(v['max_instrip_upwind_percent'], 2) < max_instrip_upwind_percent
-            #'pass_max_crossover': len(xovers) < max_crossovers
+            #'pass_min_sum_upwind_dist': v['sum_upwind_dist'] > min_upwind_dist,
+            'pass_instrip_upwind_percent': round(v['max_instrip_upwind_percent'], 2) < max_instrip_upwind_percent,
+            'pass_crossover_to_dist_ratio': v['crossover_to_dist_ratio'] < max_crossover_to_dist_ratio,
+            #'pass_max_crossover': len(xovers) <= max_crossovers
         }
 
         if not split_at_crossovers:
@@ -2707,13 +2723,13 @@ def mean_dir_after_stop(df, heading_var='ft_heading',theta_range=(-np.pi, np.pi)
     return meandirs
 
 
-def calculate_bout_metrics(b_, heading_vars=['ft_heading', 'heading'],
+def calculate_bout_metrics(b_, index=0, heading_vars=['ft_heading', 'heading'],
                     group_vars=['fly_id', 'condition', 'boutnum', 'trial_id'],
                     theta_range=(-np.pi, np.pi), xvar='ft_posx', yvar='ft_posy'):
     '''
     Calculate metrics for 1 bout. 
     To do for all bouts: 
-    df.groupby('boutnum').apply(calculate_bout_metrics).unstack().reset_index()
+    df.groupby('boutnum', as_index=False).apply(calculate_bout_metrics).unstack()
 
     Arguments:
         df_ (pd.DataFrame):  df of 1 single bout
@@ -2739,7 +2755,6 @@ def calculate_bout_metrics(b_, heading_vars=['ft_heading', 'heading'],
     path_length = util.path_length(coords) #b_['euclid_dist'].sum() -  b_['euclid_dist'].iloc[0],
     path_length_x = util.path_length(coords, axis='x')
     path_length_y = util.path_length(coords, axis='y')
-
 
     if 'dist_from_edge' in b_.columns.tolist():
         max_dist_from_edge = b_['dist_from_edge'].max()
@@ -2777,7 +2792,23 @@ def calculate_bout_metrics(b_, heading_vars=['ft_heading', 'heading'],
             k = 'average_{}'.format(heading_var)
             v = sts.circmean(b_[heading_var], low=theta_range[0], high=theta_range[1])
             mdict.update({k: v})
-    misc = pd.Series(mdict)
+    # include group vars:
+    #for varn in group_vars:
+    #    mdict.update({varn: b_[varn].unique()[0]})
+    ign_cols = util.flatten([io_vars, lin_vars, single_vals, list(mdict.keys())])
+    add_cols = [k for k in b_.columns if k not in ign_cols] 
+    #['odor_on', 'led_on', 'instrip', 'epoch', 'bout_type']
+    for varn in add_cols:
+        if all(b_[varn].isna()):
+            val = None
+        else:
+            cnts = b_[varn].value_counts()
+            if len(cnts)==0:
+                print(varn)
+            val = cnts.index[cnts.argmax()]
+        mdict.update({varn: val})
+
+    misc = pd.Series(mdict) #, name=index)
 
 #    misc = pd.Series({
 #        'duration': df_['time'].iloc[-1] - df_['time'].iloc[0],
@@ -2791,54 +2822,74 @@ def calculate_bout_metrics(b_, heading_vars=['ft_heading', 'heading'],
 #    }) #, index=[0])
 #    
     #metrics = pd.DataFrame(pd.concat([misc, lin_metrics, single_metrics])).T    
-    metrics = pd.concat([misc, lin_metrics, single_metrics]).T
+    metrics = pd.concat([misc, lin_metrics, single_metrics]) #.T
     return metrics
 
 
 def get_bout_metrics(etdf1):
-    grouper = ['fly_id', 'filename', 'boutnum', 'condition']
-    b_list= []
-    for i, ((fid, fn, bnum, cond), df_) in enumerate(etdf1.groupby(grouper, group_keys=False)):
-        d_ = pd.DataFrame(calculate_bout_metrics(df_)).T
-        d_['fly_id'] = fid
-        d_['filename'] = fn
-        d_['boutnum'] = bnum
-        d_['condition'] = cond
-        d_['led_on'] = any(df_['led_on']) 
-        b_list.append(d_)
-    boutdf = pd.concat(b_list, axis=0).reset_index(drop=True)
+    group_vars = ['fly_id', 'filename', 'boutnum', 'condition']
+    numeric = etdf1.select_dtypes(include=np.number).columns.tolist()
+    bool_types = etdf1.select_dtypes(include=bool).columns.tolist()
+    str_types = etdf1.select_dtypes(include=np.object).columns.tolist()
+    boutdf = etdf1.groupby(group_vars, as_index=False)\
+                  .apply(calculate_bout_metrics, group_vars=group_vars).unstack()
 
-    boutdf['instrip'] = boutdf['instrip'].astype(bool)
-    boutdf['led_on'] = boutdf['led_on'].astype(bool)
+#    b_list= []
+#    boutdf = pd.concat([calculate_bout_metrics(df_, group_vars=group_vars, index=ix) \
+#                for ix, (fi, fn, bn, cond), df_ in \
+#                enumerate(etdf1.groupby(['fly_id', 'filename', 'boutnum', 'condition']))], axis=1).T
+#
+#    for i, ((fid, fn, bnum, cond), df_) in enumerate(etdf1.groupby(grouper, group_keys=False)):
+#        d_ = pd.DataFrame(calculate_bout_metrics(df_)).T
+#        d_['fly_id'] = fid
+#        d_['filename'] = fn
+#        d_['boutnum'] = bnum
+#        d_['condition'] = cond
+#        d_['led_on'] = any(df_['led_on']) 
+#        b_list.append(d_)
+#    boutdf = pd.concat(b_list, axis=0).reset_index(drop=True)
+
+    newvals = [c for c in boutdf.columns if \
+                c not in numeric and c not in bool_types and c not in str_types] #calculate_bout_metrics
+
+    for varn in bool_types:
+        boutdf[varn] = boutdf[varn].astype(bool)
     boutdf['epoch_type'] = ['{}-{}'.format(a, b) for (a, b) in boutdf[['bout_type', 'epoch']].values]
 
-    check_cols=[]
-    for c in boutdf.columns.tolist():
-        if not pd.api.types.is_numeric_dtype(boutdf[c]):
-            check_cols.append(c)
-    non_numeric = [
-        'bout_type',
-        'epoch_type',
-        'epoch',
-        'experiment',
-        'filename',
-        'fly_name',
-        'fly_id',
-        'fpath',
-        'strip_type',
-        'condition',
-        'trial']
-    fix_cols = [c for c in check_cols if c not in non_numeric]
-    for c in fix_cols:
-        boutdf[c] = boutdf[c].astype(float)
-    check_cols=[]
-    for c in boutdf.columns.tolist():
-        if c in non_numeric:
-            continue
-        if not pd.api.types.is_numeric_dtype(boutdf[c]):
-            check_cols.append(c)
-    assert len(check_cols)==0, "Bad dtypes: {}".format(check_cols)
+    #check_cols=[]
+    numeric.extend(newvals)
+    for c in numeric: #boutdf.columns.tolist():
+        #print(c)
+        if c in boutdf.columns:
+            boutdf[c] = boutdf[c].astype(float)
 
+#    for c in boutdf.columns.tolist():
+#        if not pd.api.types.is_numeric_dtype(boutdf[c]):
+#            check_cols.append(c)
+#    non_numeric = [
+#        'bout_type',
+#        'epoch_type',
+#        'epoch',
+#        'experiment',
+#        'filename',
+#        'fly_name',
+#        'fly_id',
+#        'fpath',
+#        'strip_type',
+#        'trial', 'trial_id',  'condition']
+#       
+#    fix_cols = [c for c in check_cols if c not in non_numeric]
+#    for c in fix_cols:
+#        #print(c)
+#        boutdf[c] = boutdf[c].astype(float)
+#    check_cols=[]
+#    for c in boutdf.columns.tolist():
+#        if c in non_numeric:
+#            continue
+#        if not pd.api.types.is_numeric_dtype(boutdf[c]):
+#            check_cols.append(c)
+#    assert len(check_cols)==0, "Bad dtypes: {}".format(check_cols)
+#
     return boutdf
 
 
