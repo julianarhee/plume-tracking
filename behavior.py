@@ -2830,7 +2830,7 @@ def get_bout_metrics(etdf1):
     group_vars = ['fly_id', 'filename', 'boutnum', 'condition']
     numeric = etdf1.select_dtypes(include=np.number).columns.tolist()
     bool_types = etdf1.select_dtypes(include=bool).columns.tolist()
-    str_types = etdf1.select_dtypes(include=np.object).columns.tolist()
+    str_types = etdf1.select_dtypes(include=object).columns.tolist()
     boutdf = etdf1.groupby(group_vars, as_index=False)\
                   .apply(calculate_bout_metrics, group_vars=group_vars).unstack()
 
