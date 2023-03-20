@@ -117,20 +117,26 @@ def plot_zeroed_trajectory(df_, ax=None, traj_lw=1.5, odor_lw=1.0,
 
 
 def plot_paired_inout_metrics(df_, nr=2, nc=3, pair_by='filename',
-                xvarname='instrip', order=[False, True], xticklabels=['outstrip', 'instrip'],
+                xvarname='instrip', order=[False, True], 
+                xticklabels=['outstrip', 'instrip'],
                 yvarnames=['duration', 'path_length',
                 'crosswind_speed', 'upwind_speed', 
-                'crosswind_dist_range', 'upwind_dist_range']):
+                'crosswind_dist_range', 'upwind_dist_range'],
+                color='w', line_markersize=3, lw=0.5, alpha=1, 
+                plot_mean=True, mean_marker='_', scale=1, errwidth=0.5):
 
 
     fig, axn = pl.subplots(nr, nc, figsize=(10,5)) #len(varnames))
     for ax, varn in zip(axn.flat, yvarnames):
         plot_paired_in_vs_out(varn, df_, ax=ax, pair_by=pair_by,
-                    xvarname=xvarname, order=order, xticklabels=xticklabels)
+                    xvarname=xvarname, order=order, xticklabels=xticklabels,
+                color=color, line_markersize=line_markersize, lw=lw, alpha=alpha,
+                plot_mean=plot_mean, mean_marker=mean_marker, scale=scale, errwidth=errwidth)
+
         #a = df_[df_['instrip']][['filename', varn]]
         a = df_[pair_by].unique()
         dof = len(a)-1
-        fig.text(0.75, 0.06, 'Wilcoxon signed-rank, n={} trajectories'.format(len(a)),
+        fig.text(0.75, 0.06, 'Wilcoxon signed-rank, n={} {}'.format(len(a), pair_by),
                 fontsize=10)
     pl.subplots_adjust(left=0.1, wspace=0.5, hspace=0.5, right=0.95, bottom=0.2)
     
@@ -138,7 +144,9 @@ def plot_paired_inout_metrics(df_, nr=2, nc=3, pair_by='filename',
 
 def plot_paired_in_vs_out(varn, df_, ax=None, pair_by='filename',
                 xvarname='instrip', order=[False, True],
-                xticklabels=['outstrip', 'instrip']):
+                xticklabels=['outstrip', 'instrip'],
+                color='w', line_markersize=2, lw=0.5, alpha=1, plot_mean=True,
+                mean_marker='_', scale=1, errwidth=0.5):
     if ax is None:
         fig, ax = pl.subplots()
     # plot
@@ -148,7 +156,7 @@ def plot_paired_in_vs_out(varn, df_, ax=None, pair_by='filename',
         is_bool = True
         order = order.astype(int)
     sns.stripplot(data=df_, x=xvarname, y=varn, ax=ax, order=order,
-                    c='w', s=3, jitter=False)
+                    c=color, s=line_markersize, jitter=False)
     # plot paired lines
     v1, v2 = order
     for f, fd in df_.groupby(pair_by):
@@ -158,7 +166,13 @@ def plot_paired_in_vs_out(varn, df_, ax=None, pair_by='filename',
             x_ = np.nanmean(x_)
         if len(y_)>1:
             y_ = np.nanmean(y_)
-        ax.plot([0, 1], [x_, y_], 'w', lw=0.5)
+        ax.plot([0, 1], [x_, y_], 'w', lw=lw, alpha=alpha)
+
+    # plot mean
+    if plot_mean:
+        sns.pointplot(data=df_, x=xvarname, y=varn, ax=ax, order=order,
+            markers=mean_marker, color=color, scale=scale, errwidth=errwidth, join=False,
+            estimator='mean')
     # adjust ticks
     ax.tick_params(which='both', axis='both', length=2, width=0.5, color='w',
                    direction='out', left=True)
