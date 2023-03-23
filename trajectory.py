@@ -118,7 +118,9 @@ def find_et_bouts(df0, odor_bounds, strip_width=50, strip_sep=1000,
             print(oi, start_bout, end_bout, next_ob_min, df_.shape)
         else:
             df_ = df0.copy()
-            start_bout = df0[df0['instrip']].iloc[0]['boutnum'].min() + 1 # start from 1st outbout
+            # start from 1st outbout
+            start_bout = df0[df0['instrip']].iloc[0]['boutnum'].min() + 1
+            # end at last inbout
             end_bout = df0[df0['instrip']]['boutnum'].max()
         #print("checking bouts for ET: ", start_bout, end_bout)
         if df_.shape[0]==0:

@@ -87,10 +87,14 @@ def normalize_position(b_):
 
 def plot_zeroed_trajectory(df_, ax=None, traj_lw=1.5, odor_lw=1.0,
                         strip_width=50, strip_sep=1000, plot_odor_strip=True,
-                        main_col='w', bool_colors=['r'], bool_vars=['instrip']):
+                        main_col='w', bool_colors=['r'], bool_vars=['instrip'], y_thresh=None):
     if ax is None:
         fig, ax= pl.subplots()
-    odor_ix = df_[df_['instrip']].iloc[0].name
+    try:
+        odor_ix = df_[df_['instrip']].iloc[0].name
+    except IndexError:
+        print("No odor?? {}".format(df_['filename'].unique()[0]))
+
     #plotdf = df_.loc[odor_ix:]
     # odor_ix = params[fn]['odor_ix']
     plotdf = zero_trajectory(df_)
@@ -113,25 +117,30 @@ def plot_zeroed_trajectory(df_, ax=None, traj_lw=1.5, odor_lw=1.0,
             #cols = [col if v==True else 'none' for v in b_[boolvar].values]
             ax.plot(b_['ft_posx'], b_['ft_posy'], lw=traj_lw, c=col)
 
+    if y_thresh is not None:
+        for y in y_thresh:
+            ax.axhline(y=y, linestyle=':', lc='w', lw=0.25)
+
+    
     return ax
 
 
-def plot_paired_inout_metrics(df_, nr=2, nc=3, pair_by='filename',
+def plot_paired_inout_metrics(df_, nr=2, nc=3, aspect=2, pair_by='filename',
                 xvarname='instrip', order=[False, True], 
                 xticklabels=['outstrip', 'instrip'],
                 yvarnames=['duration', 'path_length',
                 'crosswind_speed', 'upwind_speed', 
                 'crosswind_dist_range', 'upwind_dist_range'],
-                color='w', line_markersize=3, lw=0.5, alpha=1, 
+                color='w', line_markersize=3, lw=0.5, alpha=1,
                 plot_mean=True, mean_marker='_', scale=1, errwidth=0.5):
 
 
-    fig, axn = pl.subplots(nr, nc, figsize=(10,5)) #len(varnames))
+    fig, axn = pl.subplots(nr, nc, figsize=(nc*2.5,nr*2)) #len(varnames))
     for ax, varn in zip(axn.flat, yvarnames):
-        plot_paired_in_vs_out(varn, df_, ax=ax, pair_by=pair_by,
+        plot_paired_inout_ax(varn, df_, ax=ax, pair_by=pair_by,
                     xvarname=xvarname, order=order, xticklabels=xticklabels,
                 color=color, line_markersize=line_markersize, lw=lw, alpha=alpha,
-                plot_mean=plot_mean, mean_marker=mean_marker, scale=scale, errwidth=errwidth)
+                plot_mean=plot_mean, mean_marker=mean_marker, scale=scale, errwidth=errwidth, aspect=aspect)
 
         #a = df_[df_['instrip']][['filename', varn]]
         a = df_[pair_by].unique()
@@ -142,9 +151,9 @@ def plot_paired_inout_metrics(df_, nr=2, nc=3, pair_by='filename',
     
     return fig
 
-def plot_paired_in_vs_out(varn, df_, ax=None, pair_by='filename',
+def plot_paired_inout_ax(varn, df_, ax=None, pair_by='filename',
                 xvarname='instrip', order=[False, True],
-                xticklabels=['outstrip', 'instrip'],
+                xticklabels=['outstrip', 'instrip'], aspect=None,
                 color='w', line_markersize=2, lw=0.5, alpha=1, plot_mean=True,
                 mean_marker='_', scale=1, errwidth=0.5):
     if ax is None:
@@ -182,6 +191,8 @@ def plot_paired_in_vs_out(varn, df_, ax=None, pair_by='filename',
     ax.set_xlabel('')
     ax.set_xlim([-0.5, 1.5])
     ax.set_xticklabels(xticklabels) #['outstrip', 'instrip'])
+    if aspect is not None:
+        ax.set_box_aspect(aspect)
     # stats
     oneval_per= df_.groupby([pair_by, xvarname], as_index=False).mean()
     a = oneval_per[oneval_per[xvarname]==v1][varn].values
@@ -395,18 +406,18 @@ def plot_sorted_distn_with_hist_instrip(varn, boutdf_filt, estimator='median',
 
 
 def plot_one_flys_trials(df_, instrip_palette={True: 'r', False: 'w'},
-            incl_logs=[], aspect_ratio=2, y_thresh=None, 
-            sharex=False, sharey=True):
+            incl_logs=[], aspect_ratio=2, 
+            strip_width=50, strip_sep=1000,
+            sharex=False, sharey=True, y_thresh=None,
+            bool_vars=['instrip'], bool_colors=['r']):
 
     ntrials = len(df_['trial_id'].unique())
     fig, axn = pl.subplots(1, ntrials, figsize=(ntrials*2.5, 5))
     if len(df_['trial_id'].unique())==1:
-        sns.scatterplot(data=df_, x="ft_posx", y="ft_posy", 
-                    hue='instrip', ax=axn,
-                    s=.5, edgecolor='none', palette=instrip_palette)
-        sns.scatterplot(data=df_[df_['led_on']], 
-                    x="ft_posx", y="ft_posy", hue='led_on', ax=axn,
-                    s=.5, edgecolor='none', palette={True: 'y'}, legend=False)
+        # plot
+        axn = plot_zeroed_trajectory(df_, ax=axn, strip_width=strip_width, 
+                    strip_sep=strip_sep, 
+                    bool_colors=bool_colors, bool_vars=bool_vars, y_thresh=y_thresh)
         axn.set_box_aspect(aspect_ratio)
 
         if y_thresh is not None:
@@ -419,15 +430,15 @@ def plot_one_flys_trials(df_, instrip_palette={True: 'r', False: 'w'},
         currcond = df_['condition'].unique()[0]
         plot_title = "{}{}{}".format(trial_id, '\n', currcond)
         axn.set_title(plot_title, fontsize=5, loc='left')
-        axn.legend(bbox_to_anchor=(1,1), loc='upper left')
+        if axn.legend_ is not None:
+            axn.legend(bbox_to_anchor=(1,1), loc='upper left')
     else:
         for ai, (ax, (trial_id, tdf_)) in enumerate(zip(axn.flat, df_.groupby('trial_id'))):
-            sns.scatterplot(data=tdf_, x="ft_posx", y="ft_posy", 
-                    hue='instrip', ax=ax,
-                    s=.5, edgecolor='none', palette=instrip_palette)
-            sns.scatterplot(data=tdf_[tdf_['led_on']], 
-                    x="ft_posx", y="ft_posy", hue='led_on', ax=ax,
-                    s=.5, edgecolor='none', palette={True: 'y'}, legend=False)
+            # plot
+            ax = plot_zeroed_trajectory(tdf_, ax=ax, strip_width=strip_width, 
+                    strip_sep=strip_sep, 
+                    bool_colors=bool_colors, bool_vars=bool_vars,
+                    y_thresh=y_thresh)
             ax.set_box_aspect(aspect_ratio)
 
             if y_thresh is not None:
@@ -441,10 +452,11 @@ def plot_one_flys_trials(df_, instrip_palette={True: 'r', False: 'w'},
             currcond = tdf_['condition'].unique()[0]
             plot_title = "{}{}{}".format(trial_id, '\n', currcond)
             ax.set_title(plot_title, fontsize=6, loc='left')
-            if ai == (ntrials-1):
-                ax.legend(bbox_to_anchor=(1,1.1), loc='lower right')
-            else:
-                ax.legend_.remove()
+            if ax.legend_ is not None:
+                if ai == (ntrials-1):
+                    ax.legend(bbox_to_anchor=(1,1.1), loc='lower right')
+                else:
+                    ax.legend_.remove()
 
     return fig
 
