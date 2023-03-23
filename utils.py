@@ -297,6 +297,8 @@ def set_sns_style(style='dark', min_fontsize=6):
     pl.rcParams['savefig.dpi'] = 400
     pl.rcParams['figure.figsize'] = [6,4]
 
+    pl.rcParams['svg.fonttype'] = 'none'
+
 
 #def add_colorwheel(fig, cmap='hsv', axes=[0.8, 0.8, 0.1, 0.1], fontsize=7,
 #                   theta_range=[-np.pi, np.pi], deg2plot=None, theta_units='rad'):
