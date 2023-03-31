@@ -300,16 +300,18 @@ def set_sns_style(style='dark', min_fontsize=6):
     pl.rcParams['svg.fonttype'] = 'none'
 
 
-#def add_colorwheel(fig, cmap='hsv', axes=[0.8, 0.8, 0.1, 0.1], fontsize=7,
-#                   theta_range=[-np.pi, np.pi], deg2plot=None, theta_units='rad'):
+
+#def add_colorwheel(fig, cmap='hsv', axes=[0.8, 0.8, 0.1, 0.1], 
+#                   theta_range=[-np.pi, np.pi], deg2plot=None):
+#
+#    '''
+#    Assumes values go from 0-->180, -180-->0. (radians).
+#    ''' 
 #    display_axes = fig.add_axes(axes, projection='polar')
-#    # display_axes._direction = max(theta_range) #2*np.pi ## This is a nasty hack - using the hidden field to 
+#    #display_axes._direction = max(theta_range) #2*np.pi ## This is a nasty hack - using the hidden field to 
 #                                      ## multiply the values such that 1 become 2*pi
 #                                      ## this field is supposed to take values 1 or -1 only!!
 #    #norm = mpl.colors.Normalize(0.0, 2*np.pi)
-#    if theta_units=='deg':
-#        theta_range = np.deg2rad(theta_range)
-#
 #    norm = mpl.colors.Normalize(theta_range[0], theta_range[1])
 #
 #    # Plot the colorbar onto the polar axis
@@ -325,153 +327,124 @@ def set_sns_style(style='dark', min_fontsize=6):
 #    if deg2plot is not None:
 #        display_axes.plot([0, deg2plot], [0, 1], 'k')
 #    
-#    #display_axes.set_theta_zero_location('W')
-#    return display_axes
+#    display_axes.set_theta_zero_location('N')
+#    display_axes.set_theta_direction(-1)  # theta increasing clockwise
 #
-def add_colorwheel(fig, cmap='hsv', axes=[0.8, 0.8, 0.1, 0.1], 
-                   theta_range=[-np.pi, np.pi], deg2plot=None):
+#    return display_axes
 
-    '''
-    Assumes values go from 0-->180, -180-->0. (radians).
-    ''' 
-    display_axes = fig.add_axes(axes, projection='polar')
-    #display_axes._direction = max(theta_range) #2*np.pi ## This is a nasty hack - using the hidden field to 
-                                      ## multiply the values such that 1 become 2*pi
-                                      ## this field is supposed to take values 1 or -1 only!!
-    #norm = mpl.colors.Normalize(0.0, 2*np.pi)
-    norm = mpl.colors.Normalize(theta_range[0], theta_range[1])
-
-    # Plot the colorbar onto the polar axis
-    # note - use orientation horizontal so that the gradient goes around
-    # the wheel rather than centre out
-    quant_steps = 2056
-    cb = mpl.colorbar.ColorbarBase(display_axes, cmap=mpl.cm.get_cmap(cmap, quant_steps),
-                                       norm=norm, orientation='horizontal')
-    # aesthetics - get rid of border and axis labels                                   
-    cb.outline.set_visible(False)                                 
-    #display_axes.set_axis_off()
-    #display_axes.set_rlim([-1,1])
-    if deg2plot is not None:
-        display_axes.plot([0, deg2plot], [0, 1], 'k')
-    
-    display_axes.set_theta_zero_location('N')
-    display_axes.set_theta_direction(-1)  # theta increasing clockwise
-
-    return display_axes
-
-def circular_hist(ax, x, bins=16, density=True, offset=0, gaps=True, 
-                    edgecolor='w', facecolor=[0.7]*3, alpha=0.7, lw=0.5):
-    """
-    Produce a circular histogram of angles on ax.
-    From: https://stackoverflow.com/questions/22562364/circular-polar-histogram-in-python
-
-    Parameters
-    ----------
-    ax : matplotlib.axes._subplots.PolarAxesSubplot
-        axis instance created with subplot_kw=dict(projection='polar').
-
-    x : array
-        Angles to plot, expected in units of radians.
-
-    bins : int, optional
-        Defines the number of equal-width bins in the range. The default is 16.
-
-    density : bool, optional
-        If True plot frequency proportional to area. If False plot frequency
-        proportional to radius. The default is True.
-
-    offset : float, optional
-        Sets the offset for the location of the 0 direction in units of
-        radians. The default is 0.
-
-    gaps : bool, optional
-        Whether to allow gaps between bins. When gaps = False the bins are
-        forced to partition the entire [-pi, pi] range. The default is True.
-
-    Returns
-    -------
-    n : array or list of arrays
-        The number of values in each bin.
-
-    bins : array
-        The edges of the bins.
-
-    patches : `.BarContainer` or list of a single `.Polygon`
-        Container of individual artists used to create the histogram
-        or list of such containers if there are multiple input datasets.
-    """
-    # Wrap angles to [-pi, pi)
-    # x = (x+np.pi) % (2*np.pi) - np.pi
-    # Force bins to partition entire circle
-    if not gaps:
-        #bins = np.linspace(-np.pi, np.pi, num=bins+1)
-        bins = np.linspace(0, 2*np.pi, num=bins+1)
-    # Bin data and record counts
-    n, bins = np.histogram(x, bins=bins)
-    # Compute width of each bin
-    widths = np.diff(bins)
-    # By default plot frequency proportional to area
-    if density:
-        # Area to assign each bin
-        area = n / x.size
-        # Calculate corresponding bin radius
-        radius = (area/np.pi) ** .5
-    # Otherwise plot frequency proportional to radius
-    else:
-        radius = n
-    # Plot data on ax
-    patches = ax.bar(bins[:-1], radius, zorder=1, width=widths, #align='edge', 
-                     edgecolor=edgecolor, fill=True, linewidth=lw, facecolor=facecolor,
-                    alpha=alpha)
-    # Set the direction of the zero angle
-    ax.set_theta_offset(offset)
-    # Remove ylabels for area plots (they are mostly obstructive)
-    if density:
-        ax.set_yticks([])
-        #ax.tick_params(which='both', axis='both', size=0)
-    ax.set_theta_zero_location('N')
-    ax.set_theta_direction(-1)  # theta increasing clockwise
-     
-    return n, bins, patches
-
-def colorbar_from_mappable(ax, norm, cmap, hue_title='', axes=[0.85, 0.3, 0.01, 0.4]): #pad=0.05):
-    from mpl_toolkits.axes_grid1 import make_axes_locatable
-
-    fig = ax.figure
-    #ax.legend_.remove()
-    #divider = make_axes_locatable(ax)
-    #cax = divider.append_axes("right", size="5%", pad=pad)
-    cax = fig.add_axes(axes) 
-    sm =  mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
-    sm.set_array([])
-
-    cbar = fig.colorbar(sm, cax=cax) #ax=ax)
-    cbar.ax.set_title(hue_title, fontsize=7)
-    cbar.ax.tick_params(labelsize=7)
-
-    #pl.colorbar(im, cax=cax)
-
-def plot_vector_path(ax, x, y, c, scale=1.5, width=0.005, headwidth=5, pivot='tail', 
-                    colormap=mpl.cm.plasma, vmin=None, vmax=None, hue_title='',
-                    axes=[0.8, 0.3, 0.01, 0.4]):
-    if vmin is None:
-        #vmin, vmax = b_[hue_param].min(), b_[hue_param].max()
-        vmin, vmax = c.min(), c.max()
-    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
-    #colors=b_[hue_param]
-
-#     uu = b_['ft_posx'].shift(periods=-1) - b_['ft_posx']
-#     vv = b_['ft_posy'].shift(periods=-1) - b_['ft_posy']
-#     ax.quiver(b_['ft_posx'].values, b_['ft_posy'].values, uu, vv, color=colormap(norm(colors)), 
-#               angles='xy', scale_units='xy', scale=1.5)
-    uu = np.roll(x, -1) - x # b_['ft_posx']
-    vv = np.roll(y, -1) - y #b_['ft_posy'].shift(periods=-1) - b_['ft_posy']
-    uu[-1]=np.nan
-    vv[-1]=np.nan
-    ax.quiver(x, y, uu, vv, color=colormap(norm(c)), 
-              angles='xy', scale_units='xy', scale=scale, pivot=pivot,
-              width=width, headwidth=headwidth)
-    colorbar_from_mappable(ax, norm, cmap=colormap, hue_title=hue_title, axes=axes)
-    return ax
-
-
+#def circular_hist(ax, x, bins=16, density=True, offset=0, gaps=True, 
+#                    edgecolor='w', facecolor=[0.7]*3, alpha=0.7, lw=0.5):
+#    """
+#    Produce a circular histogram of angles on ax.
+#    From: https://stackoverflow.com/questions/22562364/circular-polar-histogram-in-python
+#
+#    Parameters
+#    ----------
+#    ax : matplotlib.axes._subplots.PolarAxesSubplot
+#        axis instance created with subplot_kw=dict(projection='polar').
+#
+#    x : array
+#        Angles to plot, expected in units of radians.
+#
+#    bins : int, optional
+#        Defines the number of equal-width bins in the range. The default is 16.
+#
+#    density : bool, optional
+#        If True plot frequency proportional to area. If False plot frequency
+#        proportional to radius. The default is True.
+#
+#    offset : float, optional
+#        Sets the offset for the location of the 0 direction in units of
+#        radians. The default is 0.
+#
+#    gaps : bool, optional
+#        Whether to allow gaps between bins. When gaps = False the bins are
+#        forced to partition the entire [-pi, pi] range. The default is True.
+#
+#    Returns
+#    -------
+#    n : array or list of arrays
+#        The number of values in each bin.
+#
+#    bins : array
+#        The edges of the bins.
+#
+#    patches : `.BarContainer` or list of a single `.Polygon`
+#        Container of individual artists used to create the histogram
+#        or list of such containers if there are multiple input datasets.
+#    """
+#    # Wrap angles to [-pi, pi)
+#    # x = (x+np.pi) % (2*np.pi) - np.pi
+#    # Force bins to partition entire circle
+#    if not gaps:
+#        #bins = np.linspace(-np.pi, np.pi, num=bins+1)
+#        bins = np.linspace(0, 2*np.pi, num=bins+1)
+#    # Bin data and record counts
+#    n, bins = np.histogram(x, bins=bins)
+#    # Compute width of each bin
+#    widths = np.diff(bins)
+#    # By default plot frequency proportional to area
+#    if density:
+#        # Area to assign each bin
+#        area = n / x.size
+#        # Calculate corresponding bin radius
+#        radius = (area/np.pi) ** .5
+#    # Otherwise plot frequency proportional to radius
+#    else:
+#        radius = n
+#    # Plot data on ax
+#    patches = ax.bar(bins[:-1], radius, zorder=1, width=widths, #align='edge', 
+#                     edgecolor=edgecolor, fill=True, linewidth=lw, facecolor=facecolor,
+#                    alpha=alpha)
+#    # Set the direction of the zero angle
+#    ax.set_theta_offset(offset)
+#    # Remove ylabels for area plots (they are mostly obstructive)
+#    if density:
+#        ax.set_yticks([])
+#        #ax.tick_params(which='both', axis='both', size=0)
+#    ax.set_theta_zero_location('N')
+#    ax.set_theta_direction(-1)  # theta increasing clockwise
+#     
+#    return n, bins, patches
+#
+#def colorbar_from_mappable(ax, norm, cmap, hue_title='', axes=[0.85, 0.3, 0.01, 0.4]): #pad=0.05):
+#    from mpl_toolkits.axes_grid1 import make_axes_locatable
+#
+#    fig = ax.figure
+#    #ax.legend_.remove()
+#    #divider = make_axes_locatable(ax)
+#    #cax = divider.append_axes("right", size="5%", pad=pad)
+#    cax = fig.add_axes(axes) 
+#    sm =  mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+#    sm.set_array([])
+#
+#    cbar = fig.colorbar(sm, cax=cax) #ax=ax)
+#    cbar.ax.set_title(hue_title, fontsize=7)
+#    cbar.ax.tick_params(labelsize=7)
+#
+#    #pl.colorbar(im, cax=cax)
+#
+#def plot_vector_path(ax, x, y, c, scale=1.5, width=0.005, headwidth=5, pivot='tail', 
+#                    colormap=mpl.cm.plasma, vmin=None, vmax=None, hue_title='',
+#                    axes=[0.8, 0.3, 0.01, 0.4]):
+#    if vmin is None:
+#        #vmin, vmax = b_[hue_param].min(), b_[hue_param].max()
+#        vmin, vmax = c.min(), c.max()
+#    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+#    #colors=b_[hue_param]
+#
+##     uu = b_['ft_posx'].shift(periods=-1) - b_['ft_posx']
+##     vv = b_['ft_posy'].shift(periods=-1) - b_['ft_posy']
+##     ax.quiver(b_['ft_posx'].values, b_['ft_posy'].values, uu, vv, color=colormap(norm(colors)), 
+##               angles='xy', scale_units='xy', scale=1.5)
+#    uu = np.roll(x, -1) - x # b_['ft_posx']
+#    vv = np.roll(y, -1) - y #b_['ft_posy'].shift(periods=-1) - b_['ft_posy']
+#    uu[-1]=np.nan
+#    vv[-1]=np.nan
+#    ax.quiver(x, y, uu, vv, color=colormap(norm(c)), 
+#              angles='xy', scale_units='xy', scale=scale, pivot=pivot,
+#              width=width, headwidth=headwidth)
+#    colorbar_from_mappable(ax, norm, cmap=colormap, hue_title=hue_title, axes=axes)
+#    return ax
+#
+#

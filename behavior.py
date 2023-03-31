@@ -2330,13 +2330,13 @@ def examine_heading_in_bout(b_, theta_range=(-np.pi, np.pi), xvar='ft_posx', yva
                     hue_norm=heading_norm) #tuple(np.rad2deg(theta_range)))
     ax.legend(bbox_to_anchor=(-0.1, 1.01), ncols=2, loc='lower left', title=heading_var_og)
     wheel_axis = [0.75, 0.3, leg_size, leg_size] if show_angles else [0.75, 0.7, leg_size, leg_size]
-    cax = util.add_colorwheel(fig, axes=wheel_axis, 
+    cax = putil.add_colorwheel(fig, axes=wheel_axis, 
                     theta_range=theta_range, cmap=theta_cmap) 
     # ---------------------------------------------------------
     # plot calculated direction vectors 
     # ---------------------------------------------------------
     ax=axn[1, 0]; ax.set_title('rdp-arctan2')
-    b_ = rdp_to_heading(b_, xvar='ft_posx', yvar='ft_posy', theta_range=theta_range)
+    b_ = rdp_to_heading(b_, xvar=xvar, yvar=yvar, theta_range=theta_range)
     rdp_var ='rdp_{}'.format(xvar)
     # -- 
     ax.plot(b_[xvar], b_[yvar], 'w', lw=0.5)
@@ -2348,7 +2348,7 @@ def examine_heading_in_bout(b_, theta_range=(-np.pi, np.pi), xvar='ft_posx', yva
     # ---------------------------------------------------------
     ax=axn[1,1]; ax.set_title('mean angles')
     ax.plot(b_[xvar], b_[yvar], 'w', lw=0.5)
-    b_ = calculate_mean_across_rdp(b_, heading_var=heading_var, theta_range=theta_range, is_phase=True)
+    b_ = calculate_mean_across_rdp(b_, heading_var=heading_var, theta_range=theta_range, is_phase=True, xvar=xvar, yvar=yvar)
     ax = plot_bout(b_[b_[rdp_var]], ax, hue_var='{}_mean'.format(heading_var), norm=norm, cmap=theta_cmap,
                 markersize=25, plot_legend=show_angles)
     ax = add_colored_lines(b_[b_[rdp_var]], ax, hue_var='{}_mean'.format(heading_var), cmap=theta_cmap, norm=norm)
@@ -2497,11 +2497,11 @@ def examine_heading_at_stops(b_, xvar='ft_posx', yvar='ft_posy',
     # ---------------------
     ax=axn[3]; #ax.set_title('rdp-heading')
     theta_norm = mpl.colors.Normalize(theta_range[0], theta_range[1])
-    b_ = rdp_to_heading(b_, xvar='ft_posx', yvar='ft_posy', theta_range=theta_range)
+    b_ = rdp_to_heading(b_, xvar=xvar, yvar=yvar, theta_range=theta_range)
     rdp_var ='rdp_{}'.format(xvar)
     ax.plot(b_[xvar], b_[yvar], 'w', lw=0.5)
     b_['rdp_arctan2_deg'] = np.rad2deg(b_['rdp_arctan2'])
-    ax = plot_bout(b_[b_[rdp_var]], ax, xvar='ft_posx', yvar='ft_posy', 
+    ax = plot_bout(b_[b_[rdp_var]], ax, xvar=xvar, yvar=yvar, 
                 hue_var='rdp_arctan2', norm=theta_norm, cmap=theta_cmap,
                 markersize=20, plot_legend=show_angles)
     if show_angles:
@@ -2511,7 +2511,7 @@ def examine_heading_at_stops(b_, xvar='ft_posx', yvar='ft_posy',
     # legend
     leg_size=0.1
     wheel_axis = [0.8, 0.3, leg_size, leg_size] if show_angles else [0.8, 0.6, leg_size, leg_size]
-    cax = util.add_colorwheel(fig, axes=wheel_axis, 
+    cax = putil.add_colorwheel(fig, axes=wheel_axis, 
                     theta_range=theta_range, cmap=theta_cmap) 
     #cax = util.add_colorwheel(fig, axes=[0.8, 0.6, 0.1, 0.1], theta_range=theta_range, cmap='hsv') 
     cax.set_title('rdp-heading', fontsize=7)
@@ -2537,7 +2537,7 @@ def examine_heading_at_stops_vectors(b_, xvar='ft_posx', yvar='ft_posy',
     # ---------------------
     ax=axn[0]
     vmin, vmax = b_['speed'].min(), b_['speed'].max()
-    util.plot_vector_path(ax, b_[xvar].values, b_[yvar].values, 
+    putil.plot_vector_path(ax, b_[xvar].values, b_[yvar].values, 
                       b_['speed'].values, vmin=vmin, vmax=vmax, scale=scale)
     # -------------------------- 
     ax=axn[1]
@@ -2558,7 +2558,7 @@ def examine_heading_at_stops_vectors(b_, xvar='ft_posx', yvar='ft_posy',
     rdp_var ='rdp_{}'.format(xvar)
     ax.plot(b_[xvar], b_[yvar], 'w', lw=0.5)
     b_['rdp_arctan2_deg'] = np.rad2deg(b_['rdp_arctan2'])
-    ax = plot_bout(b_[b_[rdp_var]], ax, xvar='ft_posx', yvar='ft_posy', 
+    ax = plot_bout(b_[b_[rdp_var]], ax, xvar=xvar, yvar=yvar,
                 hue_var='rdp_arctan2', norm=theta_norm, cmap=theta_cmap,
                 markersize=20, plot_legend=show_angles)
     if show_angles:
@@ -2568,7 +2568,7 @@ def examine_heading_at_stops_vectors(b_, xvar='ft_posx', yvar='ft_posy',
     # legend
     leg_size=0.1
     wheel_axis = [0.8, 0.3, leg_size, leg_size] if show_angles else [0.8, 0.6, leg_size, leg_size]
-    cax = util.add_colorwheel(fig, axes=wheel_axis, 
+    cax = putil.add_colorwheel(fig, axes=wheel_axis, 
                     theta_range=theta_range, cmap=theta_cmap) 
     #cax = util.add_colorwheel(fig, axes=[0.8, 0.6, 0.1, 0.1], theta_range=theta_range, cmap='hsv') 
     cax.set_title('rdp-heading', fontsize=7)
@@ -2642,7 +2642,7 @@ def visualize_calculation_heading_after_stop(b_, theta_range=(-np.pi, np.pi),
     # for snum in stopbouts:
     #     cx, cy = util.get_CoM(b_[b_['stopboutnum']==snum], xvar=xvar, yvar=yvar)
     #     ax.scatter(cx, cy, marker='o', edgecolor='w', s=100, facecolor='none')
-    cax = util.add_colorwheel(fig, theta_range=theta_range, cmap=theta_cmap, 
+    cax = putil.add_colorwheel(fig, theta_range=theta_range, cmap=theta_cmap, 
                             axes=[0.86, 0.6, 0.1, 0.1])
     pl.subplots_adjust(wspace=0.5, left=0.15, top=0.8, right=0.85)
 
@@ -2928,9 +2928,9 @@ def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, strip_sep=
 
     # polar plot of turn angles at stops
     ax = fig.add_subplot(1, 2, 2, projection='polar')
-    n1, _, _ = util.circular_hist(ax, np.deg2rad(meanangs_['meandir']), bins=40, 
+    n1, _, _ = putil.circular_hist(ax, np.deg2rad(meanangs_['meandir']), bins=40, 
                   facecolor=stop_color, density=False, edgecolor='none', alpha=0.9)
-    n2, _, _ = util.circular_hist(ax, np.deg2rad(last_['meandir']), bins=40, 
+    n2, _, _ = putil.circular_hist(ax, np.deg2rad(last_['meandir']), bins=40, 
                   facecolor=laststop_color, density=False, alpha=.7, edgecolor='none')
     ylim = max([n1.max(), n2.max()])
     ax.set_ylim([0, ylim+1])
@@ -2938,7 +2938,7 @@ def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, strip_sep=
 
     # legends
     axes=[0.85, 0.6, 0.1, 0.1]
-    util.add_colorwheel(fig, cmap=theta_cmap, theta_range=theta_range, axes=axes)
+    putil.add_colorwheel(fig, cmap=theta_cmap, theta_range=theta_range, axes=axes)
 
 
     pl.subplots_adjust(left=0.1, wspace=0.5, top=0.8, right=0.85, bottom=0.2)
