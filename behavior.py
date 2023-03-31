@@ -1025,7 +1025,10 @@ def find_strip_borders(df, entry_ix=None, strip_width=50, return_entry_sides=Fal
             ogrid, in_odor = get_odor_grid(currdf, 
                                 strip_width=strip_width, strip_sep=strip_sep,
                                 use_crossings=True, verbose=False)
-            odor_borders = list(ogrid.values())
+            if ogrid is not None:
+                odor_borders = list(ogrid.values())
+            else:
+                odor_borders = None
         else:
             if entry_left_edge:
                 odor_xmin = currdf[currdf['instrip']].iloc[0]['ft_posx'] 
@@ -1242,7 +1245,7 @@ def process_df(df, xvar='ft_posx', yvar='ft_posy', fliplr=False,
         df, with columns: boutnum, rel_time, cum_time, speed (+upwind/xwind), dist (upwind/xwind), heading, etc.
     '''
     dlist=[]
-    for trial_id, df_ in df.groupby('trial_id'):
+    for trial_id, df_ in df.groupby('filename'):
         if verbose:
             print("... processing {}".format(trial_id))
 
