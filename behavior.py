@@ -2725,6 +2725,7 @@ def mean_dir_after_stop(df, heading_var='ft_heading',theta_range=(-np.pi, np.pi)
 
 def calculate_bout_metrics(b_, index=0, heading_vars=['ft_heading', 'heading'],
                     group_vars=['fly_id', 'condition', 'boutnum', 'trial_id'],
+                    return_each=False,
                     theta_range=(-np.pi, np.pi), xvar='ft_posx', yvar='ft_posy'):
     '''
     Calculate metrics for 1 bout. 
@@ -2744,8 +2745,12 @@ def calculate_bout_metrics(b_, index=0, heading_vars=['ft_heading', 'heading'],
     #b_ = df_.dropna()
     io_vars = ['led1_stpt', 'led2_stpt', 'mfc1_stpt', 'mfc2_stpt', 'mfc3_stpt',\
                'motor_step_command']
+    alt_calc_vars = ['speed', 'upwind_speed', 'crosswind_speed', 'rel_time', 
+                    'ft_heading', 'ft_heading_og', 'ft_heading_deg']
+
     single_vals = [i for i in b_.columns if len(b_[i].unique())==1\
-                  and i not in group_vars and i not in io_vars]
+                  and i not in group_vars and i not in io_vars \
+                  and i not in alt_calc_vars]
     single_metrics = b_[single_vals].drop_duplicates().reset_index(drop=True).squeeze()
     
     lin_vars = ['speed', 'upwind_speed', 'crosswind_speed']
@@ -2767,7 +2772,6 @@ def calculate_bout_metrics(b_, index=0, heading_vars=['ft_heading', 'heading'],
         min_dist_from_edge=None
         max_dist_from_edge_abs = None
         min_dist_from_edge_abs=None
-       
 
     mdict = {
         'duration': b_['time'].iloc[-1] - b_['time'].iloc[0],
@@ -2789,7 +2793,7 @@ def calculate_bout_metrics(b_, index=0, heading_vars=['ft_heading', 'heading'],
     }
     for heading_var in heading_vars:
         if heading_var in b_.columns:
-            k = 'average_{}'.format(heading_var)
+            k = heading_var #'average_{}'.format(heading_var)
             v = sts.circmean(b_[heading_var], low=theta_range[0], high=theta_range[1])
             mdict.update({k: v})
     # include group vars:
@@ -2806,7 +2810,8 @@ def calculate_bout_metrics(b_, index=0, heading_vars=['ft_heading', 'heading'],
             if len(cnts)==0:
                 print(varn)
             val = cnts.index[cnts.argmax()]
-        mdict.update({varn: val})
+        if varn not in list(mdict.keys()):
+            mdict.update({varn: val})
 
     misc = pd.Series(mdict) #, name=index)
 
@@ -2822,38 +2827,27 @@ def calculate_bout_metrics(b_, index=0, heading_vars=['ft_heading', 'heading'],
 #    }) #, index=[0])
 #    
     #metrics = pd.DataFrame(pd.concat([misc, lin_metrics, single_metrics])).T    
-    metrics = pd.concat([misc, lin_metrics, single_metrics]) #.T
-    return metrics
+    metrics = pd.DataFrame(pd.concat([misc, lin_metrics, single_metrics])).T.drop_duplicates()
+
+    if return_each:
+        return misc, lin_metrics, single_metrics
+    else:
+        return metrics
 
 
-def get_bout_metrics(etdf1):
-    group_vars = ['fly_id', 'filename', 'boutnum', 'condition']
+def get_bout_metrics(etdf1, group_vars = ['fly_id', 'filename', 'boutnum', 'condition']):
     numeric = etdf1.select_dtypes(include=np.number).columns.tolist()
     bool_types = etdf1.select_dtypes(include=bool).columns.tolist()
     str_types = etdf1.select_dtypes(include=object).columns.tolist()
     boutdf = etdf1.groupby(group_vars, as_index=False)\
-                  .apply(calculate_bout_metrics, group_vars=group_vars).unstack()
-
-#    b_list= []
-#    boutdf = pd.concat([calculate_bout_metrics(df_, group_vars=group_vars, index=ix) \
-#                for ix, (fi, fn, bn, cond), df_ in \
-#                enumerate(etdf1.groupby(['fly_id', 'filename', 'boutnum', 'condition']))], axis=1).T
-#
-#    for i, ((fid, fn, bnum, cond), df_) in enumerate(etdf1.groupby(grouper, group_keys=False)):
-#        d_ = pd.DataFrame(calculate_bout_metrics(df_)).T
-#        d_['fly_id'] = fid
-#        d_['filename'] = fn
-#        d_['boutnum'] = bnum
-#        d_['condition'] = cond
-#        d_['led_on'] = any(df_['led_on']) 
-#        b_list.append(d_)
-#    boutdf = pd.concat(b_list, axis=0).reset_index(drop=True)
-
+                  .apply(calculate_bout_metrics, group_vars=group_vars) #\
+                  #.drop_duplicates().unstack()
     newvals = [c for c in boutdf.columns if \
                 c not in numeric and c not in bool_types and c not in str_types] #calculate_bout_metrics
 
     for varn in bool_types:
-        boutdf[varn] = boutdf[varn].astype(bool)
+        if varn in boutdf.columns:
+            boutdf[varn] = boutdf[varn].astype(bool)
     boutdf['epoch_type'] = ['{}-{}'.format(a, b) for (a, b) in boutdf[['bout_type', 'epoch']].values]
 
     #check_cols=[]
@@ -2863,33 +2857,6 @@ def get_bout_metrics(etdf1):
         if c in boutdf.columns:
             boutdf[c] = boutdf[c].astype(float)
 
-#    for c in boutdf.columns.tolist():
-#        if not pd.api.types.is_numeric_dtype(boutdf[c]):
-#            check_cols.append(c)
-#    non_numeric = [
-#        'bout_type',
-#        'epoch_type',
-#        'epoch',
-#        'experiment',
-#        'filename',
-#        'fly_name',
-#        'fly_id',
-#        'fpath',
-#        'strip_type',
-#        'trial', 'trial_id',  'condition']
-#       
-#    fix_cols = [c for c in check_cols if c not in non_numeric]
-#    for c in fix_cols:
-#        #print(c)
-#        boutdf[c] = boutdf[c].astype(float)
-#    check_cols=[]
-#    for c in boutdf.columns.tolist():
-#        if c in non_numeric:
-#            continue
-#        if not pd.api.types.is_numeric_dtype(boutdf[c]):
-#            check_cols.append(c)
-#    assert len(check_cols)==0, "Bad dtypes: {}".format(check_cols)
-#
     return boutdf
 
 
@@ -3024,11 +2991,11 @@ def plot_trajectory(df0, odor_bounds=[], ax=None,
 
     df = df0.loc[start_ix:].copy()
 
-    odor_start_x = float(df[df['instrip']].iloc[0]['ft_posx'])
-    odor_start_y = float(df[df['instrip']].iloc[0]['ft_posy'])
    
     if zero_odor_start:
         print("...zeroing to odor start")
+        odor_start_x = float(df[df['instrip']].iloc[0]['ft_posx'])
+        odor_start_y = float(df[df['instrip']].iloc[0]['ft_posy'])
         df = zero_to_odor_start(df)
         for i, (om, oM) in enumerate(odor_bounds):
            odor_bounds[i] = (om - odor_start_x, oM - odor_start_x)
