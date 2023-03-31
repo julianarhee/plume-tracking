@@ -163,7 +163,7 @@ def circular_dist(angle1, angle2):
     return np.pi - abs(np.pi - abs(angle1-angle2))
 
 
-def circular_median(values):
+def circular_median(values0):
     '''
     Median as min. distance to all other observations in sample.
 
@@ -173,6 +173,7 @@ def circular_median(values):
     Returns:
         _description_
     '''
+    values = values0.values
     dist = [sum([circular_dist(mid_angle, angle) for angle in values])\
                 for mid_angle in values]
     if not len(values) % 2:
@@ -180,7 +181,7 @@ def circular_median(values):
         mid_angles = values[sorted_dist[0:2]]
         return np.mean(mid_angles)
     else:
-        return values[np.agmin(dist)]
+        return values[np.argmin(dist)]
 
 
 
