@@ -183,6 +183,26 @@ def circular_median(values0):
     else:
         return values[np.argmin(dist)]
 
+def get_weighted_average(d_, hist_var='ft_heading', weights_var='euclid_dist', is_circular=True):
+    values = d_[hist_var].values
+    weights = d_[weights_var].values
+    bins = np.histogram_bin_edges(values, bins='fd') # can use auto, or force Freedman Diaconis Estimator 
+    counts, edges = np.histogram(values, bins=bins, weights=weights)
+
+    bin_middles = (edges[:-1] + edges[1:]) / 2
+    average =          np.sum(bin_middles * counts * 1) / sum(counts) # is weighted bec weights provided to np.histogram()
+    #weighted_average = np.sum(bin_middles * counts * weights) / sum(counts)
+    if is_circular:
+        mean_cos = np.average(np.cos(values), weights=weights)
+        mean_sin = np.average(np.sin(values), weights=weights)
+        average = np.arctan2(mean_sin, mean_cos)
+
+    return average
+
+def get_euclid_distance(df, xvar='ft_posx', yvar='ft_posy'):
+
+    return np.nansum(np.linalg.norm(df[[xvar, yvar]].diff(axis=0), axis=1))
+
 
 
 def get_CoM(df_, xvar='ft_posx', yvar='ft_posy'):
