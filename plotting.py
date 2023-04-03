@@ -30,6 +30,13 @@ def remove_spines(ax, axes=['right', 'top']):
        ax.spines[pos].set_visible(False)
 
 
+def vertical_scalebar(ax, leg_xpos=0, leg_ypos=0, leg_scale=100):
+    #leg_xpos=0; leg_ypos=round(df0.loc[odor_ix]['ft_posy']); leg_scale=100
+    ax.plot([leg_xpos, leg_xpos], [leg_ypos, leg_ypos+leg_scale], 'w', lw=2)
+    
+    ax.text(leg_xpos-5, leg_ypos+(leg_scale/2), '{} mm'.format(leg_scale), fontsize=12, horizontalalignment='right')
+    #ax.axis('off')
+
 
 def custom_legend(labels, colors, use_line=True, lw=4, markersize=10):
     '''
@@ -496,7 +503,7 @@ def plot_array_of_trajectories(trajdf, sorted_eff=[], nr=5, nc=7,
         ax.axis('off')
         if fi==0:
             leg_xpos=-150; leg_ypos=0; leg_scale=100
-            butil.vertical_scalebar(ax, leg_xpos=leg_xpos, leg_ypos=leg_ypos)
+            vertical_scalebar(ax, leg_xpos=leg_xpos, leg_ypos=leg_ypos)
         #ax.set_box_aspect(3)
         ax.set_xlim([-150, 150])
         ax.set_ylim([-100, maxy])

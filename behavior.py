@@ -2920,12 +2920,6 @@ def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, strip_sep=
 # Plotting and Visualization
 # ----------------------------------------------------------------------
 
-def vertical_scalebar(ax, leg_xpos=0, leg_ypos=0, leg_scale=100):
-    #leg_xpos=0; leg_ypos=round(df0.loc[odor_ix]['ft_posy']); leg_scale=100
-    ax.plot([leg_xpos, leg_xpos], [leg_ypos, leg_ypos+leg_scale], 'w', lw=2)
-    
-    ax.text(leg_xpos-5, leg_ypos+(leg_scale/2), '{} mm'.format(leg_scale), fontsize=12, horizontalalignment='right')
-    #ax.axis('off')
     
 def zero_to_odor_start(df0):
     df = df0.copy()
