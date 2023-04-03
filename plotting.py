@@ -30,11 +30,11 @@ def remove_spines(ax, axes=['right', 'top']):
        ax.spines[pos].set_visible(False)
 
 
-def vertical_scalebar(ax, leg_xpos=0, leg_ypos=0, leg_scale=100):
+def vertical_scalebar(ax, leg_xpos=0, leg_ypos=0, leg_scale=100, lw=1,fontsize=6):
     #leg_xpos=0; leg_ypos=round(df0.loc[odor_ix]['ft_posy']); leg_scale=100
-    ax.plot([leg_xpos, leg_xpos], [leg_ypos, leg_ypos+leg_scale], 'w', lw=2)
+    ax.plot([leg_xpos, leg_xpos], [leg_ypos, leg_ypos+leg_scale], 'w', lw=lw)
     
-    ax.text(leg_xpos-5, leg_ypos+(leg_scale/2), '{} mm'.format(leg_scale), fontsize=12, horizontalalignment='right')
+    ax.text(leg_xpos-5, leg_ypos+(leg_scale/2), '{} mm'.format(leg_scale), fontsize=fontsize, horizontalalignment='right')
     #ax.axis('off')
 
 
