@@ -988,7 +988,7 @@ def check_entry_left_edge(df, entry_ix=None, nprev_steps=5,
         return entry_left_edge
  
 def find_strip_borders(df, entry_ix=None, strip_width=50, return_entry_sides=False,
-                        strip_sep=500, is_grid=True, get_all_borders=True):
+                        strip_angle=0, strip_sep=500, is_grid=True, get_all_borders=True):
     '''
     Get all strip borders using get_odor_grid() OR taking first values of instrip.
 
@@ -1005,6 +1005,13 @@ def find_strip_borders(df, entry_ix=None, strip_width=50, return_entry_sides=Fal
     Returns:
         odor_borders (list) : List of tuples, each indicating (strip_min, strip_max)        
     '''
+    if strip_angle != 0:
+        #ax.plot([-25, 975], [0,1000], color=odor_lc, lw=odor_lw)
+        #ax.plot([25, 1025], [0,1000], color=odor_lc, lw=odor_lw)
+        odor_borders = [(-25, 25)]
+        return odor_borders
+
+
     if entry_ix is None:
         try:
             entry_ix = df[df['instrip']].iloc[0].name
@@ -1388,6 +1395,9 @@ def calculate_distance(df, xvar='ft_posx', yvar='ft_posy'):
     df['euclid_dist'] = np.linalg.norm(df[[xvar, yvar]].diff(axis=0), axis=1)
     df['upwind_dist'] = df[yvar].diff()
     df['crosswind_dist'] = df[xvar].diff().abs()
+    for v in ['euclid_dist', 'upwind_dist', 'crosswind_dist']:
+        df.loc[df.iloc[0].name, v] = 0
+
     return df
 
 def calculate_stops(df, stop_thresh=1.0, speed_varname='smoothed_speed'):
