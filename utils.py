@@ -282,7 +282,6 @@ def smooth_timecourse(in_trace, win_size=41):
 def label_figure(fig, fig_id, x=0.01, y=0.98):
     fig.text(x, y, fig_id, fontsize=8)
 
-
 def set_sns_style(style='dark', min_fontsize=6):
     font_styles = {
                     'axes.labelsize': min_fontsize+1, # x and y labels
@@ -314,6 +313,19 @@ def set_sns_style(style='dark', min_fontsize=6):
 #        pl.rcParams['figure.facecolor'] = 'black'
 #        pl.rcParams['axes.facecolor'] = 'black'
         sns.set_style("dark", rc=custom_style)
+    elif style == 'white':
+        custom_style = {
+                    'axes.labelcolor': 'black',
+                    'axes.edgecolor': 'black',
+                    'grid.color': 'gray',
+                    'xtick.color': 'black',
+                    'ytick.color': 'black',
+                    'text.color': 'black',
+                    'axes.facecolor': 'white',
+                    'axes.grid': False,
+                    'figure.facecolor': 'white'}
+        custom_style.update(font_styles)
+        sns.set_style('white', rc=custom_style)
 
     pl.rcParams['savefig.dpi'] = 400
     pl.rcParams['figure.figsize'] = [6,4]
