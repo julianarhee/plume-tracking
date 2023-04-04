@@ -1519,10 +1519,12 @@ def filter_bouts_by_dur(df, bout_thresh=0.5, bout_varname='boutnum',
                     else:
                         # if current bout is IN, not enough time for odor to fully turn on (~0.5s to turn on), so should be outside bout:
                         if all(df_['instrip'].unique()):
-                            print("[bout {}]  too short instrip, should be OUT".format(boutnum))
+                            if verbose:
+                                print("[bout {}]  too short instrip, should be OUT".format(boutnum))
                             new_value = False
                         else:
-                            print("[bout {}]  too short outstrip, should be IN".format(boutnum))
+                            if verbose:
+                                print("[bout {}]  too short outstrip, should be IN".format(boutnum))
 
                             # current bout is OUT, but not enough time for odor to turn off, so count as an inside bout:
                             new_value = True
