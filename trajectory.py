@@ -125,23 +125,12 @@ def find_et_bouts(df0, odor_bounds, strip_width=50, strip_sep=1000,
         #print("checking bouts for ET: ", start_bout, end_bout)
         if df_.shape[0]==0:
             continue
-        #print( "{}: starts instrip {}".format(oi, df_['instrip'].iloc[0]))
-        # calculate duration and N in/outbouts of current ET bout
-        #start_bout = df_[df_['instrip']].iloc[0]['boutnum']+1 # measure from first outbout
-        #end_bout = df_[df_['instrip']]['boutnum'].max() # until last inbout
 
-        measure_bout = df_[(df_['boutnum']>=start_bout) & (df_['boutnum']<=end_bout)].copy()
+        df0_filt = df_[(df_['boutnum']>=start_bout) & (df_['boutnum']<=end_bout)].copy()
         entry_ix = df_[df_['ft_posx']>ob[0]].iloc[0].name
-        #et_params = butil.calculate_et_params(measure_bout)
-        #etparams = butil.get_edgetracking_params(measure_bout, strip_width=strip_width, 
-        #                                         split_at_crossovers=False)
-        #print(etparams)
-        
-        #upwind_dist = measure_bout['upwind_dist'].sum()
-        #n_bouts = len(measure_bout['boutnum'].unique())
 
         # check if ET
-        is_et, etparams, curr_pass_key = butil.is_edgetracking(measure_bout, 
+        is_et, etparams, curr_pass_key = butil.is_edgetracking(df0_filt, 
                             return_key=True,
                             strip_width=strip_width, 
                             split_at_crossovers=False,
@@ -185,7 +174,6 @@ def get_best_et_boutkey(et_boutstats):
 def select_best_et_bout(et_boutkey, et_bouts, df0_full, strip_sep=500):
     # select from 
     next_ob = et_bouts[et_boutkey][0]
-    # print(next_ob)
     # start from previou outbout, if exists
     odor_ix = df0_full[df0_full['ft_posx']>=next_ob].iloc[0].name
     et_startbout = df0_full.loc[odor_ix]['boutnum'] -1 # start from previous OUT bout
@@ -222,33 +210,35 @@ def check_and_flip_traj(df0_full, et_boutkey, et_boutstats, et_bouts, strip_widt
                                         strip_width=strip_width)
     return dfp, obounds_fp
 
-
-
-def filter_first_instrip_last_outstrip(boutdf):
+def filter_first_instrip_last_outstrip(anydf, y_thresh=None):
     '''
-    Remove 1st instrip (odor starts on top of fly), and last outstrip (wandering off)
-    '''
-
-    d_list = []
-    #t_list = []
-    for fn, df_ in boutdf.groupby('filename'):
-        first_instrip = df_[df_['instrip']]['boutnum'].min()
-        last_instrip = df_[df_['instrip']]['boutnum'].max()
-        if first_instrip==1 and last_instrip==1: # condition where fly just wanders off
-            first_instrip = 0 #df_[df_['instrip']]['boutnum'].min()
-            last_instrip = df_['boutnum'].max()
-        tmpdf = df_[(df_['boutnum']<=last_instrip) & (df_['boutnum']>first_instrip)]
-        d_list.append(tmpdf)
-        #print(first_instrip, last_instrip, tmpdf.shape)
-        #traj_ = etdf[etdf['filename']==fn].copy()
-        #traj_tmp = traj_[(traj_['boutnum']<=last_instrip) & (traj_['boutnum']>first_instrip)]
-        #t_list.append(traj_tmp)
-    boutdf_filt = pd.concat(d_list, axis=0).reset_index(drop=True)
-    print(boutdf_filt.shape)
-    #trajdf_filt = pd.concat(t_list, axis=0).reset_index(drop=True)
+    Remove 1st instrip (odor starts on top of fly), and last outstrip (wandering off). 
     
-    return boutdf_filt #, trajdf_filt
+    Arguments:
+        anydf: full pd.DataFrame (sorts by filename)
+    Keyword Arguments:
+        y_thresh (None, float): if specified, takes the first bout >= a given y-position threshold 
+        (specifically for T-plume)
+    Returns:
+        anydf_filt: input dataframe, but with start/end bouts removed.
+        
+    '''
+    d_list = []
+    for fn, df_ in anydf.groupby('filename'):
+        if y_thresh is not None:
+            start_bout = df_[df_['ft_posy']>=y_thresh].iloc[0]['boutnum']+1
+        else:
+            start_bout = df_[df_['instrip']]['boutnum'].min()+1
+        end_bout = df_[df_['instrip']]['boutnum'].max()
+        if end_bout==1: # condition where fly just wanders off
+            start_bout = 1 #df_[df_['instrip']]['boutnum'].min()
+            end_bout = df_['boutnum'].max()
+        tmpdf = df_[(df_['boutnum']<=end_bout) & (df_['boutnum']>=start_bout)]
+        d_list.append(tmpdf)
 
+    anydf_filt = pd.concat(d_list, axis=0).reset_index(drop=True)
+    
+    return anydf_filt #, trajdf_filt
 
 ## combining traces
 def upsample_bout_trajectories(df_, npoints=1000):
@@ -309,130 +299,7 @@ def align_and_average_bout_center0(df_, end_at_zero=False):
     #avg_y_out = interp_y_out.mean(axis=1)
 
     return interp_x_in, interp_y_in, avg_x_in, avg_y_in
-#
-#def upsample_trajectory(df_, max_nframes, xvar='ft_posx', yvar='ft_posy', offset=True):
-#    d_list=[]
-#    for (trial_id, ep, bnum), b_ in df_.groupby(['trial_id', 'epoch', 'boutnum']):
-#        px = np.pad(b_[xvar].values, (0, int(max_nframes-len(b_))), 'constant', constant_values=np.nan)
-#        py = np.pad(b_[yvar].values, (0, int(max_nframes-len(b_))), 'constant', constant_values=np.nan)
-#        d_ = pd.DataFrame({
-#                      'boutnum': [bnum]*len(px),
-#                      'epoch': [ep]*len(px),
-#                      'trial_id': [trial_id]*len(px),
-#                       xvar: px,  - px[0], 
-#                       yvar: py, - py[0], 
-#                      'ix': np.arange(0, len(px)),
-#                      'instrip': [b_['instrip'].unique()[0]]*len(px)})
-#        d_list.append(d_)
-#    up_ = pd.concat(d_list).reset_index(drop=True)
-#    return up_
-#
 
-#def upsample_bout_to_pivot(up_, xvar='ft_posx', yvar='ft_posy'):
-#    '''
-#    Trajectories upsampled to match in length, filled with nans.
-#    Reshape into pivot table for easy manipulation.
-#    '''
-#    px = pd.pivot_table(up_[up_['instrip']], columns=['boutnum'], index=['ix'], values=xvar)
-#    py = pd.pivot_table(up_[up_['instrip']], columns=['boutnum'], index=['ix'], values=yvar)
-#
-#    return px, py
-
-#def align_and_average_in2out(px, py, end_at_zero=True, 
-#                    min_bouts_to_average=3):
-#    '''
-#    Specific to upsampled bouts for creating aligned and averaged bout.
-#    Assumes start with IN bout, which ends at (0,0) and ends with OUT bout, which starts at (0, 0).
-#
-#    To average IN bouts ending at (0, 0), some flipping and aligning needs to be done to make sure averaging the way the traces are visualized. Not nec for OUT bouts, because they already start at (0, 0).
-#    '''   
-#    ix_to_offset = -1 if end_at_zero else 0
-#    # if subtract last point, the trace should "end" at 0
-#    # to start at 0, subtract off the 1st point
-#    zero_px = px.apply(lambda x: x-x.dropna().iloc[ix_to_offset])
-#    zero_py = py.apply(lambda x: x-x.dropna().iloc[ix_to_offset]) 
-#
-#    if end_at_zero:
-#        # flip array so that the end point (0) is at the start for averaging
-#        d_list=[]
-#        for i, (b, v) in enumerate(zero_py.items()):
-#            flipped_vals = v[::-1].dropna().values
-#            d_list.append(pd.DataFrame(data=flipped_vals, columns=[b], index=np.arange(0, len(flipped_vals))))
-#        zero_aligned_y = pd.concat(d_list, axis=1)
-#        #print(zero_aligned_y.shape, zero_py.shape)
-#
-#        d_list=[]
-#        for i, (b, v) in enumerate(zero_px.items()):
-#            # flip values so that 0 is the starting point instead of end
-#            flipped_vals = v[::-1].dropna().values
-#            d_list.append(pd.DataFrame(data=flipped_vals, columns=[b], index=np.arange(0, len(flipped_vals))))
-#        zero_aligned_x = pd.concat(d_list, axis=1)
-#        #print(zero_aligned_x.shape, zero_py.shape)
-#    else:
-#        zero_aligned_x = zero_px.copy()
-#        zero_aligned_y = zero_py.copy()
-#        
-#    max_ix = [i for i, v in zero_aligned_x.iterrows() if len(np.where(np.isfinite(v))[0])>=min_bouts_to_average][-1]
-#    avgx = zero_aligned_x.iloc[0:max_ix].mean(axis=1)
-#    avgy = zero_aligned_y.iloc[0:max_ix].mean(axis=1)
-#
-#    return zero_aligned_x, zero_aligned_y, avgx, avgy
-#
-
-
-
-def calculate_tortuosity_metrics(df, xdist_cutoff=1.9, xvar='ft_posx', yvar='ft_posy'):
-
-    last_outbout = df[~df['instrip']]['boutnum'].max()
-    max_boutnum = df['boutnum'].max()
-    skip_last_bout = last_outbout==max_boutnum
-
-    # do it
-    d_list = []
-    for bnum, bdf in df[~df['instrip']].groupby('boutnum'):
-        if bnum == last_outbout and skip_last_bout:
-            continue
-        max_ix = np.argmax(bdf[xvar])
-        if max_ix==0: # this bout is flipped out to negative side, do flipLR
-            bdf['ft_posx'], bdf['ft_posy'] = util.fliplr_coordinates(bdf['ft_posx'].values, \
-                                             bdf['ft_posy'].values)
-            max_ix = np.argmax(bdf[xvar])
-            print(max_ix)
-        min_ix = np.argmin(bdf[xvar])
-        maxdist_x = bdf.iloc[max_ix][xvar] - bdf.iloc[min_ix][xvar]
-        if maxdist_x < xdist_cutoff:
-            continue
-
-        outbound_traj = bdf.iloc[0:max_ix][[xvar, yvar]].values
-        inbound_traj = bdf.iloc[max_ix:][[xvar, yvar]].values
-        # path length
-        pathlength_out = util.path_length(outbound_traj)
-        pathlength_in = util.path_length(inbound_traj)
-        # tortuosity 
-        tort_outbound = util.calculate_tortuosity(outbound_traj)
-        tort_inbound = util.calculate_tortuosity(inbound_traj)
-        # efficiency of path
-        xpathlength_out = util.path_length(outbound_traj, axis='x')
-        xpathlength_in = util.path_length(inbound_traj, axis='x')
-
-        # combine
-        d_ = pd.DataFrame({
-            'boutnum': [bnum]*2,
-            'boutdir': ['outbound', 'inbound'],
-            'pathlength': [pathlength_out, pathlength_in],
-            'tortuosity': [tort_outbound, tort_inbound],
-            'xpath_length': [xpathlength_out, xpathlength_in],
-            'efficiency': [xpathlength_out/maxdist_x, xpathlength_in/maxdist_x],
-            'maxdist_x': [maxdist_x]*2,
-            'max_xpos': [bdf.iloc[max_ix]['ft_posx']]*2,
-            'max_ix': [max_ix]*2,
-        })
-
-        d_list.append(d_)
-
-    tortdf = pd.concat(d_list,axis=0).reset_index(drop=True)
-    
-    return tortdf
 
 def plot_tortuosity_metrics(tortdf, cdf=False,
                             boutdir_palette={'outbound': 'cyan', 'inbound': 'violet'}):
