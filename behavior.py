@@ -2875,6 +2875,62 @@ def get_bout_metrics(etdf1, group_vars = ['fly_id', 'filename', 'boutnum', 'cond
     return boutdf
 
 
+def calculate_tortuosity_metrics(df, xdist_cutoff=1.9, xvar='ft_posx', yvar='ft_posy'):
+
+    last_outbout = df[~df['instrip']]['boutnum'].max()
+    max_boutnum = df['boutnum'].max()
+    skip_last_bout = last_outbout==max_boutnum
+
+    # do it
+    d_list = []
+    for bnum, bdf in df[~df['instrip']].groupby('boutnum'):
+        if bnum == last_outbout and skip_last_bout:
+            continue
+        max_ix = np.argmax(bdf[xvar])
+        if max_ix==0: # this bout is flipped out to negative side, do flipLR
+            bdf['ft_posx'], bdf['ft_posy'] = util.fliplr_coordinates(bdf['ft_posx'].values, \
+                                             bdf['ft_posy'].values)
+            max_ix = np.argmax(bdf[xvar])
+            print(max_ix)
+        min_ix = np.argmin(bdf[xvar])
+        maxdist_x = bdf.iloc[max_ix][xvar] - bdf.iloc[min_ix][xvar]
+        if maxdist_x < xdist_cutoff:
+            continue
+
+        outbound_traj = bdf.iloc[0:max_ix][[xvar, yvar]].values
+        inbound_traj = bdf.iloc[max_ix:][[xvar, yvar]].values
+        # path length
+        pathlength_out = util.path_length(outbound_traj)
+        pathlength_in = util.path_length(inbound_traj)
+        # tortuosity 
+        tort_outbound = util.calculate_tortuosity(outbound_traj)
+        tort_inbound = util.calculate_tortuosity(inbound_traj)
+        # efficiency of path
+        xpathlength_out = util.path_length(outbound_traj, axis='x')
+        xpathlength_in = util.path_length(inbound_traj, axis='x')
+
+        # combine
+        d_ = pd.DataFrame({
+            'boutnum': [bnum]*2,
+            'boutdir': ['outbound', 'inbound'],
+            'pathlength': [pathlength_out, pathlength_in],
+            'tortuosity': [tort_outbound, tort_inbound],
+            'xpath_length': [xpathlength_out, xpathlength_in],
+            'efficiency': [xpathlength_out/maxdist_x, xpathlength_in/maxdist_x],
+            'maxdist_x': [maxdist_x]*2,
+            'max_xpos': [bdf.iloc[max_ix]['ft_posx']]*2,
+            'max_ix': [max_ix]*2,
+        })
+
+        d_list.append(d_)
+
+    tortdf = pd.concat(d_list,axis=0).reset_index(drop=True)
+    
+    return tortdf
+
+
+# plotting for debugging
+
 def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, strip_sep=200, 
                     xvar='ft_posx', yvar='ft_posy',
                     laststop_color='b', stop_color=[0.9]*3, theta_range=(-np.pi, np.pi), offset=20,
@@ -2922,11 +2978,8 @@ def summarize_stops_and_turns(df_, meanangs_, last_,  strip_width=10, strip_sep=
     axes=[0.85, 0.6, 0.1, 0.1]
     putil.add_colorwheel(fig, cmap=theta_cmap, theta_range=theta_range, axes=axes)
 
-
     pl.subplots_adjust(left=0.1, wspace=0.5, top=0.8, right=0.85, bottom=0.2)
     return fig
-
-
 
 # ----------------------------------------------------------------------
 # Plotting and Visualization
