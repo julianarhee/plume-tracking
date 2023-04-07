@@ -301,6 +301,92 @@ def align_and_average_bout_center0(df_, end_at_zero=False):
     return interp_x_in, interp_y_in, avg_x_in, avg_y_in
 
 
+def rdp_trajectories(etdf_filt, xvar='ft_posx', yvar='ft_posy',
+                     rdp_epsilon=1, smooth_window=11):
+    '''
+    Split trajectories using RDP. Return etdf_filt with vars: 
+    rdp_ft_posx, rdp_ft_posy.
+    
+    Arguments:
+    
+    etdf_filt (pd.DataFrame):  filtered trajectory df for all flies (1st and last bouts filtered out)
+    '''
+    for fn, df_ in etdf_filt.groupby('filename'):
+        df_ = butil.add_rdp_by_bout(df_, epsilon=rdp_epsilon, xvar=xvar, yvar=yvar)
+        etdf_filt.loc[etdf_filt['filename']==fn, 'boutdir'] = df_['boutdir'].values
+        etdf_filt.loc[etdf_filt['filename']==fn, 'rdp_{}'.format(xvar)] = df_['rdp_{}'.format(xvar)].values
+        etdf_filt.loc[etdf_filt['filename']==fn, 'rdp_{}'.format(yvar)] = df_['rdp_{}'.format(yvar)].values
+    return etdf_filt
+
+def split_inbound_outbound(etdf_filt, xvar='ft_posx', yvar='ft_posy'):
+    '''
+    Split inside and outside trajectories by inodor, inbound, outbound.
+    Returns orig dataframe with new var "boutdir" 
+       
+    Arguments: 
+        etdf_filt (pd.DataFrame):  filtered trajectory df for all flies (1st and last bouts filtered out)
+
+    '''
+    for fn, df_ in etdf_filt.groupby('filename'):
+        df_['boutdir'] = None
+        df_.loc[df_['instrip'], 'boutdir'] = 'inodor'
+        for bnum, bdf in df_[~df_['instrip']].groupby('boutnum'):
+            max_ix = np.argmax(bdf[yvar])
+            if max_ix==0: # this bout is flipped out to negative side, do flipLR
+                bdf['ft_posx'], bdf['ft_posy'] = util.fliplr_coordinates(bdf['ft_posx'].values, \
+                                                bdf['ft_posy'].values)
+                max_ix = np.argmax(bdf[yvar])
+            min_ix = np.argmin(bdf[yvar])
+            #maxdist_x = bdf.iloc[max_ix][xvar] - bdf.iloc[min_ix][xvar]
+            first_ix = bdf.iloc[0].name
+            last_ix = bdf.iloc[-1].name
+            mid_ix = bdf.iloc[max_ix].name
+            df_.loc[first_ix:mid_ix, 'boutdir'] = 'outbound'
+            df_.loc[mid_ix:last_ix, 'boutdir'] = 'inbound'
+        etdf_filt.loc[etdf_filt['filename']==fn, 'boutdir'] = df_['boutdir'].values
+    
+    return etdf_filt    
+     
+def get_entry_exit_angles_rdp(etdf_filt):
+
+    """
+    Use RDP trajectories to get angles of exit, entry, and inside odor.
+    Returns etdf_filt with new column 'rdp_boutdir' (exit, entry, or inside)
+    and corresponding circular mean of `rdp_arctan2` which corresponds to heading
+    calculated from RDP points.
+    """
+    firstlast = etdf_filt[etdf_filt['rdp_ft_posx']].groupby(['filename', 'boutnum'])\
+                        .agg(['first', 'last']).stack().reset_index().rename(columns={'level_2': 'order'})
+    firstlast['filename'].nunique()
+
+    entries_exits = firstlast[firstlast['order']=='last'].copy()
+    # add new column, rdp_boutdir
+    entries_exits.loc[entries_exits['instrip'], 'rdp_boutdir'] = 'exit'
+    entries_exits.loc[~entries_exits['instrip'], 'rdp_boutdir'] = 'entry'
+    # add in odor avg headings:
+    inodor_ = etdf_filt[(etdf_filt['rdp_ft_posx']) & (etdf_filt['instrip'])]\
+                            .groupby(['filename', 'boutnum'], as_index=False)['rdp_arctan2'].apply(util.circular_mean)
+    inodor_['rdp_boutdir'] = 'inside'
+    # merge
+    d_list=[]
+    for fn, df_ in entries_exits.groupby('filename'):
+        # make a copy of the other columns
+        inodor_copy = df_[df_['instrip']].copy()
+        inodor_copy.pop('rdp_arctan2') 
+        inodor_copy.pop('rdp_boutdir') 
+        # replace columns with inodor values
+        inodor_copy['order'] = 'middle'
+        added_inodor = inodor_copy.merge(inodor_[inodor_['filename']==fn], on=['filename', 'boutnum'])
+        # combine
+        xd = pd.concat([df_, added_inodor], axis=0).drop_duplicates()
+        d_list.append(xd)
+    entries_exits = pd.concat(d_list, axis=0).drop_duplicates().reset_index(drop=True)
+
+    return entries_exits 
+
+
+## 
+
 def plot_tortuosity_metrics(tortdf, cdf=False,
                             boutdir_palette={'outbound': 'cyan', 'inbound': 'violet'}):
     fig, axn = pl.subplots(1, 3, figsize=(8,4))
