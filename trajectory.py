@@ -280,23 +280,65 @@ def upsample_bout_trajectories(df_, npoints=1000):
 
     return interp_x, interp_y
 
-def align_and_average_bout_center0(df_, end_at_zero=False):
 
-    interp_x_in, interp_y_in = upsample_bout_trajectories(df_)
-    #interp_x_out, interp_y_out = traj.upsample_bout_trajectories(df_[~df_['instrip']])
-   
+def filter_bouts_for_average(df_):
+    # assumes starting at *second* in-out sequence (skip first bout, 
+    # but start on an inside bout
+    first_bout = df_[df_['instrip']]['boutnum'].min() + 2 
+    last_bout = df_[~df_['instrip']]['boutnum'].max()
+    # dunno, but drop the NA columns
+    drop_cols = df_.columns[df_.isna().any()].tolist()
+    incl_cols = [c for c in df_.columns if c not in drop_cols]
+    # filter
+    df_ = df_[(df_['boutnum']>=first_bout) & (df_['boutnum']<=last_bout)][incl_cols].copy()
+
+    return df_
+
+
+def align_and_average_bout_center0(df_, end_at_zero=False, 
+                                    interpolate=True, min_nbouts=5):
+
     offset_ix = -1 if end_at_zero else 0 
-    interp_x_in = interp_x_in.apply(lambda x: x-x.iloc[offset_ix])
-    interp_y_in = interp_y_in.apply(lambda x: x-x.iloc[offset_ix])
-    
-    #out_offset = interp_y_in.mean(axis=1).iloc[-1]
-    #interp_x_out = interp_x_out.apply(lambda x: x-x.iloc[0]) 
-    #interp_y_out = interp_y_out.apply(lambda x: x-x.iloc[0]) #+ out_offset
+ 
+    if interpolate:  
+        interp_x_in, interp_y_in = upsample_bout_trajectories(df_)
+       
+        interp_x_in = interp_x_in.apply(lambda x: x-x.iloc[offset_ix])
+        interp_y_in = interp_y_in.apply(lambda x: x-x.iloc[offset_ix])
 
-    avg_x_in = interp_x_in.mean(axis=1)
-    avg_y_in = interp_y_in.mean(axis=1)
-    #avg_x_out = interp_x_out.mean(axis=1)
-    #avg_y_out = interp_y_out.mean(axis=1)
+        avg_x_in = interp_x_in.mean(axis=1)
+        avg_y_in = interp_y_in.mean(axis=1)
+    else:
+        # average
+        interp_y_in = pd.concat([pd.DataFrame({g:d['ft_posy'].tolist()}) for g,d in df_.groupby('boutnum')], axis=1)
+        total_nbouts = interp_y_in.shape[1]
+        nbouts_real = total_nbouts - interp_y_in.isnull().sum(axis=1)
+        avg_until_ix = nbouts_real.loc[nbouts_real>=min_nbouts].index[-1]
+
+        # zero traces
+        interp_y_in = interp_y_in.apply(lambda x: x-x.dropna().iloc[offset_ix]) # - interp_y_in.iloc[offset_ix]
+
+        # avg_x
+        interp_x_in = pd.concat([pd.DataFrame({g:d['ft_posx'].tolist()}) for g,d in df_.groupby('boutnum')], axis=1)
+        # zero traces
+        interp_x_in = interp_x_in.apply(lambda x: x-x.dropna().iloc[offset_ix]) #- interp_x_in.iloc[offset_ix]
+        #nbouts_real = total_nbouts - interp_x_in.isnull().sum(axis=1)
+        #avg_until_ix = nbouts_real.loc[nbouts_real>=min_nbouts].index[-1]
+
+        if offset_ix==-1:
+            interp_y_in = interp_y_in[::-1].apply(lambda x: pd.Series(x.dropna().values)).loc[0:avg_until_ix][::-1]
+            interp_x_in = interp_x_in[::-1].apply(lambda x: pd.Series(x.dropna().values)).loc[0:avg_until_ix][::-1]
+        else:
+            interp_x_in = interp_x_in.loc[0:avg_until_ix]
+            interp_y_in = interp_y_in.loc[0:avg_until_ix]
+#        if offset_ix==-1:
+#            interp_y_in = interp_y_in[::-1]
+#            interp_x_in = interp_x_in[::-1]
+        # get avg_y
+        avg_x_in = np.nanmean(interp_x_in, axis=1) 
+        # get avg_y
+        avg_y_in = np.nanmean(interp_y_in, axis=1) 
+
 
     return interp_x_in, interp_y_in, avg_x_in, avg_y_in
 
@@ -313,7 +355,7 @@ def rdp_trajectories(etdf_filt, xvar='ft_posx', yvar='ft_posy',
     '''
     for fn, df_ in etdf_filt.groupby('filename'):
         df_ = butil.add_rdp_by_bout(df_, epsilon=rdp_epsilon, xvar=xvar, yvar=yvar)
-        etdf_filt.loc[etdf_filt['filename']==fn, 'boutdir'] = df_['boutdir'].values
+        #etdf_filt.loc[etdf_filt['filename']==fn, 'boutdir'] = df_['boutdir'].values
         etdf_filt.loc[etdf_filt['filename']==fn, 'rdp_{}'.format(xvar)] = df_['rdp_{}'.format(xvar)].values
         etdf_filt.loc[etdf_filt['filename']==fn, 'rdp_{}'.format(yvar)] = df_['rdp_{}'.format(yvar)].values
     return etdf_filt
