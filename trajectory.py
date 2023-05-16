@@ -228,7 +228,9 @@ def filter_first_instrip_last_outstrip(anydf, y_thresh=None):
         if y_thresh is not None:
             start_bout = df_[df_['ft_posy']>=y_thresh].iloc[0]['boutnum']+1
         else:
+            # start at first outstrip after instrip
             start_bout = df_[df_['instrip']]['boutnum'].min()+1
+        # end at last INSTRIP
         end_bout = df_[df_['instrip']]['boutnum'].max()
         if end_bout==1: # condition where fly just wanders off
             start_bout = 1 #df_[df_['instrip']]['boutnum'].min()
