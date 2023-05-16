@@ -2788,6 +2788,11 @@ def calculate_bout_metrics(b_, index=0, heading_vars=['ft_heading', 'heading'],
         max_dist_from_edge_abs = None
         min_dist_from_edge_abs=None
 
+    if 'rel_time_bout' not in b_.columns:
+        b_['rel_time_bout'] = b_.groupby(['filename', 'boutnum'], \
+                                group_keys=False)['rel_time']\
+                                .apply(lambda x: x-x.iloc[0])
+
     mdict = {
         'duration': b_['time'].iloc[-1] - b_['time'].iloc[0],
         'upwind_dist_range': b_['ft_posy'].max() - b_['ft_posy'].min(),
@@ -2804,6 +2809,8 @@ def calculate_bout_metrics(b_, index=0, heading_vars=['ft_heading', 'heading'],
 
         #'average_heading': sts.circmean(b_['ft_heading'], low=theta_range[0], high=theta_range[1]),
         'rel_time': b_['rel_time'].iloc[0],
+        'time_in_bout': b_['rel_time_bout'].max(),
+
         'n_frames': len(b_['ft_frame'].unique())
     }
     for heading_var in heading_vars:
