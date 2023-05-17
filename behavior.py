@@ -447,9 +447,10 @@ def fliplr_dataframe(df0, flip_heading=True):
     #tmpdf = -1* df_copy[df_copy['flipped']]['{}_og'.format(heading_var)]
     return df0
 
-def check_ft_skips(df0, plot=False, remove_invalid=True, figpath=None, verbose=False, acquisition_rate=60):
+def check_ft_skips(df0, plot=False, remove_invalid=True, figpath=None, verbose=False, acquisition_rate=60, return_skips=False):
     '''
     Check dataframe of current logfile and find large skips.
+    TODO: stick with x- and y-pos only, or also include frame?
 
     Arguments:
         df (pd.DataFrame) : loaded/processed from load_dataframe()
@@ -457,6 +458,7 @@ def check_ft_skips(df0, plot=False, remove_invalid=True, figpath=None, verbose=F
     Keyword Arguments:
         plot (bool) : plot errors (default: {False})
         remove_invalid (bool) : only take first set of valid points (default: {True})
+        return_skips (bool) : return dict of identified skips {'ft_posx': [where skipped]} -- returned index is the start of the jump.
 
     Returns:
        df (pd.DataFrame) : either just itself or valid only
@@ -481,13 +483,15 @@ def check_ft_skips(df0, plot=False, remove_invalid=True, figpath=None, verbose=F
                 wonky_skips = wonky_skips[1:]
             else:
                 wonky_skips = []
-        wonky_skips = np.where(df[pvar].diff().abs()>=stepsize)[0]
+        else:
+            wonky_skips = np.where(df[pvar].diff().abs()>=stepsize)[0]
         if len(wonky_skips)>0:
             first_step = df[pvar].diff().abs().max()
             #time_step = df.iloc[wonky_skips[0]]['time'] - df.iloc[wonky_skips[0]-1]['time']
             bad_skips.update({pvar: wonky_skips})
             if verbose:
                 logging.info("WARNING: found wonky ft skip ({} jumped {:.2f}).".format(pvar, first_step))
+
     if plot==True and len(bad_skips.keys())>0:
         fig, ax = pl.subplots(figsize=(3,3)) 
         fname = df['filename'].unique()[0]
@@ -504,6 +508,9 @@ def check_ft_skips(df0, plot=False, remove_invalid=True, figpath=None, verbose=F
             pl.close()
         else:
             pl.show()
+
+    if return_skips:
+        return bad_skips
 
     flag = len(bad_skips)>0
     valid_df = df.copy()
