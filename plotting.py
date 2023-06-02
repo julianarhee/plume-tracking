@@ -533,7 +533,7 @@ def add_colorwheel(fig, cmap='hsv', axes=[0.8, 0.8, 0.1, 0.1],
                    theta_range=[-np.pi, np.pi], deg2plot=None):
 
     '''
-    Assumes values go from 0-->180, -180-->0. (radians).
+    Assumes values go from 0-->180, -180-->0 (radians), 0 is "north" or "upwind"
     ''' 
     display_axes = fig.add_axes(axes, projection='polar')
     #display_axes._direction = max(theta_range) #2*np.pi ## This is a nasty hack - using the hidden field to 
