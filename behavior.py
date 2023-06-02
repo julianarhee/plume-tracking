@@ -324,6 +324,7 @@ def load_dataframe(fpath, verbose=False, experiment=None,
                             .apply(lambda x: x.split(' -- ')[0])
     df0['motor_step_command'] = df0['timestamp -- motor_step_command']\
                             .apply(lambda x: x.split(' -- ')[1]).astype('int')
+
     # convert timestamp str into datetime obj, convert to sec
     datefmt  = '%m/%d/%Y-%H:%M:%S.%f'
     df0['time'] = df0['timestamp'].apply(lambda x: \
@@ -447,50 +448,6 @@ def fliplr_dataframe(df0, flip_heading=True):
     #tmpdf = -1* df_copy[df_copy['flipped']]['{}_og'.format(heading_var)]
     return df0
 
-def process_df_blocks(df_):
-    '''
-    Process df within block (see ft_skips_to_blocks), only relevant if remove_invalid=False
-    '''
-    d_list = []
-    df_  = ft_skips_to_blocks(df_)
-    for bnum, currd in df_.groupby('blocknum'):
-        currd = butil.process_df(currd)
-        d_list.append(currd)
-    df = pd.concat(d_list, axis=0)
-    return df
-
-def ft_skips_to_blocks(df_, bad_skips=None):
-    '''
-    Assign block numbers to separate chunks where FT "jumps" or skips frames.
-    
-    Arguments:
-        df_ (pd.DataFrame) : single dataframe, load_dataframe(remove_invalude=False)
-
-    Keyword Arguments:
-        bad_skips (dict, None): output of check_ft_skips(df_, return_skips=True)
-
-    '''
-    if bad_skips is None:
-        bad_skips = check_ft_skips(df_, return_skips=True) 
-        
-    start_frame = df_.iloc[0].name
-    end_frame = df_.iloc[-1].name
-    if len(bad_skips)>0:
-        chunks=[]
-        for ji, jump_index in enumerate(bad_skips['ft_posx']):
-            curr_chunk = (start_frame, jump_index)
-            chunks.append(curr_chunk)
-            start_frame = jump_index
-            if ji==len(bad_skips['ft_posx'])-1:
-                chunks.append( (jump_index, end_frame+1) )
-    else:
-        chunks = [ (start_frame, end_frame+1) ]
-
-    # include block num
-    for bi, (start_ix, end_ix) in enumerate(chunks):
-        df_.loc[start_ix:end_ix, 'blocknum'] = bi
-
-    return df_       
 
 def check_ft_skips(df0, plot=False, remove_invalid=True, figpath=None, verbose=False, acquisition_rate=60, return_skips=False):
     '''
