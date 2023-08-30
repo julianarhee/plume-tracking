@@ -97,6 +97,20 @@ def convert_range(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
 def flatten(l):
     return [item for sublist in l for item in sublist]
 
+def group_consecutives(vals, step=1):
+    """Return list of consecutive lists of numbers from vals (number list)."""
+    run = []
+    result = [run]
+    expect = None
+    for v in vals:
+        if (v == expect) or (expect is None):
+            run.append(v)
+        else:
+            run = [v]
+            result.append(run)
+        expect = v + step
+    return result
+
 # ----------------------------------------------------------------------
 # Calculation
 # ----------------------------------------------------------------------

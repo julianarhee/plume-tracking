@@ -465,18 +465,20 @@ def check_ft_skips(df0, plot=False, remove_invalid=True, figpath=None, verbose=F
     Returns:
        df (pd.DataFrame) : either just itself or valid only
        valid_flag (bool) : True if bad skips detected
+       bad_skips : dict of ft_posx, ft_posy keys with indices of 0,0 restarts
     '''
     odor_ix = df0[df0['instrip']].iloc[0].name
     df = df0.loc[odor_ix:].copy()
 
     fname = df['filename'].unique()
     bad_skips={}
-    poslim = 300 # 100 mm/s
-    max_nsec_skip = 2
+    poslim = 400 # 100 mm/s
+    # not sure how reliable this is -- might be better to find when x=0, y=0
+    max_nsec_skip = 5
 
-    max_step_pos = np.ceil(poslim / acquisition_rate)
+    max_step_pos = np.ceil(poslim * (1/acquisition_rate) )
     max_step_frame = max_nsec_skip/ (1/acquisition_rate)
-    max_step_size={'ft_posx': max_step_pos, 'ft_posy': max_step_pos, 'ft_frame': 100}
+    max_step_size={'ft_posx': max_step_pos, 'ft_posy': max_step_pos, 'rel_time': max_nsec_skip, 'ft_frame': max_step_frame}
     for pvar, stepsize in max_step_size.items():
         if pvar=='ft_frame':
             first_frame = df['ft_frame'].min() 
@@ -487,6 +489,7 @@ def check_ft_skips(df0, plot=False, remove_invalid=True, figpath=None, verbose=F
                 wonky_skips = []
         else:
             wonky_skips = np.where(df[pvar].diff().abs()>=stepsize)[0]
+    
         if len(wonky_skips)>0:
             first_step = df[pvar].diff().abs().max()
             #time_step = df.iloc[wonky_skips[0]]['time'] - df.iloc[wonky_skips[0]-1]['time']
