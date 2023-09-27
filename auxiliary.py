@@ -162,11 +162,12 @@ def ft_skips_to_blocks(df_, acquisition_rate=120, bad_skips=None):
 
         # check with actual 0-pos
         found_zeros = df_[(df_['ft_posx']==0) & (df_['ft_posy']==0)]
+        bad_skip_start_ixs=[]
         if found_zeros.shape[0] != len(zero_pos):
             print("*Warning: N zero points ({}) don't match skips ({}) -- using N zero points.".format(found_zeros.shape[0], len(zero_pos)))
-            zero_pos = found_zeros.index.tolist()
-            grouped_by_consec = util.group_consecutives(zero_pos)
-            bad_skip_start_ixs = [i[0] for i in grouped_by_consec]
+        zero_pos = found_zeros.index.tolist()
+        grouped_by_consec = util.group_consecutives(zero_pos)
+        bad_skip_start_ixs = [i[0] for i in grouped_by_consec]
         chunks=[]
         for ji, jump_index in enumerate(bad_skip_start_ixs): #bad_skips['ft_posx']):
             curr_chunk = (start_frame, jump_index)
@@ -178,6 +179,7 @@ def ft_skips_to_blocks(df_, acquisition_rate=120, bad_skips=None):
         chunks = [ (start_frame, end_frame+1) ]
 
     # include block num
+    df_['blocknum'] = 0
     for bi, (start_ix, end_ix) in enumerate(chunks):
         df_.loc[start_ix:end_ix, 'blocknum'] = bi
 
