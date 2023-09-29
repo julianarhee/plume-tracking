@@ -136,7 +136,7 @@ def process_df_blocks(df_, fps=120):
     df = pd.concat(d_list, axis=0)
     return df
 
-def ft_skips_to_blocks(df_, acquisition_rate=120, bad_skips=None):
+def ft_skips_to_blocks(df_, acquisition_rate=120, bad_skips=None, use_first_pos=False):
     '''
     Assign block numbers to separate chunks where FT "jumps" or skips frames.
     
@@ -149,7 +149,13 @@ def ft_skips_to_blocks(df_, acquisition_rate=120, bad_skips=None):
     '''
     if bad_skips is None:
         bad_skips = butil.check_ft_skips(df_, acquisition_rate=acquisition_rate, return_skips=True) 
- 
+    if 'rel_time' in bad_skips.keys():
+        print("... WARNING: rel_time has skips, only taking up to 1st time point")
+        i0 = df_.iloc[0].name
+        df = df_.loc[i0:bad_skips['rel_time'][0]]
+        df['blocknum'] = 0
+        return df
+
     start_frame = df_.iloc[0].name
     end_frame = df_.iloc[-1].name
     if len(bad_skips)>0:
@@ -161,7 +167,13 @@ def ft_skips_to_blocks(df_, acquisition_rate=120, bad_skips=None):
         zero_pos = np.unique(zero_pos)
 
         # check with actual 0-pos
-        found_zeros = df_[(df_['ft_posx']==0) & (df_['ft_posy']==0)]
+        if use_first_pos:
+            x0 = round(df_['ft_posx'].iloc[0], 3)
+            y0 = round(df_['ft_posy'].iloc[0], 3)
+            df_[(df_['ft_posx'].round(3)==x0) & (df_['ft_posy'].round(3)==y0)]
+        else:
+            found_zeros = df_[(df_['ft_posx']==0) & (df_['ft_posy']==0)]
+
         bad_skip_start_ixs=[]
         if found_zeros.shape[0] != len(zero_pos):
             print("*Warning: N zero points ({}) don't match skips ({}) -- using N zero points.".format(found_zeros.shape[0], len(zero_pos)))
