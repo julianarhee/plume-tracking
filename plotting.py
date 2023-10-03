@@ -37,6 +37,58 @@ def vertical_scalebar(ax, leg_xpos=0, leg_ypos=0, leg_scale=100, color='w', lw=1
     ax.text(leg_xpos-5, leg_ypos+(leg_scale/2), '{} mm'.format(leg_scale), fontsize=fontsize, horizontalalignment='right')
     #ax.axis('off')
 
+def set_sns_style(style='dark', min_fontsize=6):
+    font_styles = {
+                    'axes.labelsize': min_fontsize+1, # x and y labels
+                    'axes.titlesize': min_fontsize+1, # axis title size
+                    'figure.titlesize': min_fontsize+4,
+                    'xtick.labelsize': min_fontsize, # fontsize of tick labels
+                    'ytick.labelsize': min_fontsize,  
+                    'legend.fontsize': min_fontsize,
+                    'legend.title_fontsize': min_fontsize+1
+        }
+    for k, v in font_styles.items():
+        pl.rcParams[k] = v
+
+    pl.rcParams['axes.linewidth'] = 0.5
+
+    if style=='dark':
+        custom_style = {
+                    'axes.labelcolor': 'white',
+                    'axes.edgecolor': 'white',
+                    'grid.color': 'gray',
+                    'xtick.color': 'white',
+                    'ytick.color': 'white',
+                    'text.color': 'white',
+                    'axes.facecolor': 'black',
+                    'axes.grid': False,
+                    'figure.facecolor': 'black'}
+        custom_style.update(font_styles)
+
+#        pl.rcParams['figure.facecolor'] = 'black'
+#        pl.rcParams['axes.facecolor'] = 'black'
+        sns.set_style("dark", rc=custom_style)
+    elif style == 'white':
+        custom_style = {
+                    'axes.labelcolor': 'black',
+                    'axes.edgecolor': 'black',
+                    'grid.color': 'gray',
+                    'xtick.color': 'black',
+                    'ytick.color': 'black',
+                    'text.color': 'black',
+                    'axes.facecolor': 'white',
+                    'axes.grid': False,
+                    'figure.facecolor': 'white'}
+        custom_style.update(font_styles)
+        sns.set_style('white', rc=custom_style)
+
+    pl.rcParams['savefig.dpi'] = 400
+    pl.rcParams['figure.figsize'] = [6,4]
+
+    pl.rcParams['svg.fonttype'] = 'none'
+
+
+
 
 def custom_legend(labels, colors, use_line=True, lw=4, markersize=10):
     '''
@@ -677,4 +729,38 @@ def plot_vector_path(ax, x, y, c, scale=1.5, width=0.005, headwidth=5, pivot='ta
     colorbar_from_mappable(ax, norm, cmap=colormap, hue_title=hue_title, axes=axes)
     return ax
 
+
+def add_colored_lines(b_, ax, xvar='ft_posx', yvar='ft_posy', 
+                    hue_var='heading', cmap='hsv', norm=None,
+                    lw=1, alpha=1):
+    '''
+    Plot lines between x, y points in bout, b_, with specified colors.
+
+    Arguments:
+        b_ -- _description_
+        ax -- _description_
+
+    Keyword Arguments:
+        xvar -- _description_ (default: {'ft_posx'})
+        yvar -- _description_ (default: {'ft_posy'})
+        hue_var -- _description_ (default: {'heading'})
+        cmap -- _description_ (default: {'hsv'})
+        norm -- _description_ (default: {None})
+
+    Returns:
+        ax
+    '''
+    #if norm is None:
+    #    mpl.colors.Normalize(theta_range[0], theta_range[1])
+    assert norm is not None, "Must provide norm"
+    xy = b_[[xvar, yvar]].values
+    xy = xy.reshape(-1, 1, 2)
+    huev = b_[hue_var].values
+    #print(huev.dtype)
+    segments = np.hstack([xy[:-1], xy[1:]])
+    coll = mpl.collections.LineCollection(segments, cmap=cmap, norm=norm,
+                                lw=lw, alpha=alpha) #plt.cm.gist_ncar)
+    coll.set_array(huev) #np.random.random(xy.shape[0]))
+    ax.add_collection(coll)
+    return ax
 
