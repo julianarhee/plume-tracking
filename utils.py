@@ -270,6 +270,17 @@ def fliplr_coordinates(x, y):
 # Data processing 
 # ----------------------------------------------------------------------
 
+def subtract_rolling_mean(trace, windowsz, return_mean_only=False):
+    #print(trace.shape)
+    tmp1 = np.concatenate((np.ones(windowsz)*trace.values[0], trace, np.ones(windowsz)*trace.values[-1]),0)
+    rolling_mean = np.convolve(tmp1, np.ones(windowsz)/windowsz, 'same')
+    rolling_mean=rolling_mean[windowsz:-windowsz]
+    if return_mean_only:
+        return rolling_mean
+
+    return np.subtract(trace, rolling_mean)
+
+
 def temporal_downsample(trace, windowsz):
     tmp1=np.concatenate((np.ones(windowsz)*trace.values[0], trace, np.ones(windowsz)*trace.values[-1]),0)
     tmp2=np.convolve(tmp1, np.ones(windowsz)/windowsz, 'same')
@@ -295,57 +306,6 @@ def smooth_timecourse(in_trace, win_size=41):
 # ----------------------------------------------------------------------
 def label_figure(fig, fig_id, x=0.01, y=0.98):
     fig.text(x, y, fig_id, fontsize=8)
-
-def set_sns_style(style='dark', min_fontsize=6):
-    font_styles = {
-                    'axes.labelsize': min_fontsize+1, # x and y labels
-                    'axes.titlesize': min_fontsize+1, # axis title size
-                    'figure.titlesize': min_fontsize+4,
-                    'xtick.labelsize': min_fontsize, # fontsize of tick labels
-                    'ytick.labelsize': min_fontsize,  
-                    'legend.fontsize': min_fontsize,
-                    'legend.title_fontsize': min_fontsize+1
-        }
-    for k, v in font_styles.items():
-        pl.rcParams[k] = v
-
-    pl.rcParams['axes.linewidth'] = 0.5
-
-    if style=='dark':
-        custom_style = {
-                    'axes.labelcolor': 'white',
-                    'axes.edgecolor': 'white',
-                    'grid.color': 'gray',
-                    'xtick.color': 'white',
-                    'ytick.color': 'white',
-                    'text.color': 'white',
-                    'axes.facecolor': 'black',
-                    'axes.grid': False,
-                    'figure.facecolor': 'black'}
-        custom_style.update(font_styles)
-
-#        pl.rcParams['figure.facecolor'] = 'black'
-#        pl.rcParams['axes.facecolor'] = 'black'
-        sns.set_style("dark", rc=custom_style)
-    elif style == 'white':
-        custom_style = {
-                    'axes.labelcolor': 'black',
-                    'axes.edgecolor': 'black',
-                    'grid.color': 'gray',
-                    'xtick.color': 'black',
-                    'ytick.color': 'black',
-                    'text.color': 'black',
-                    'axes.facecolor': 'white',
-                    'axes.grid': False,
-                    'figure.facecolor': 'white'}
-        custom_style.update(font_styles)
-        sns.set_style('white', rc=custom_style)
-
-    pl.rcParams['savefig.dpi'] = 400
-    pl.rcParams['figure.figsize'] = [6,4]
-
-    pl.rcParams['svg.fonttype'] = 'none'
-
 
 
 #def add_colorwheel(fig, cmap='hsv', axes=[0.8, 0.8, 0.1, 0.1], 
