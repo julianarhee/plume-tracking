@@ -478,7 +478,7 @@ def check_ft_skips(df0, plot=False, remove_invalid=True, figpath=None, verbose=F
 
     max_step_pos = np.ceil(poslim * (1/acquisition_rate) )
     max_step_frame = max_nsec_skip/ (1/acquisition_rate)
-    max_step_size={'ft_posx': max_step_pos, 'ft_posy': max_step_pos, 'rel_time': max_nsec_skip, 'ft_frame': max_step_frame}
+    max_step_size={'ft_posx': max_step_pos, 'ft_posy': max_step_pos, 'ft_frame': max_step_frame}
     for pvar, stepsize in max_step_size.items():
         if pvar=='ft_frame':
             first_frame = df['ft_frame'].min() 
