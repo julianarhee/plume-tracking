@@ -13,12 +13,64 @@ import os
 import re
 import glob
 import h5py
+import re
 
 import pandas as pd
 import numpy as np
 
 import behavior as butil
 import utils as util
+
+# Loading
+import yaml
+def load_cam_config(camdir):
+    '''Load yaml config file from PIMAQ acquisition. 
+
+        Uses dir from get_videodir_from_tstamp()'''
+    cfg_cam_fp = glob.glob(os.path.join(camdir, '*.yaml'))[0]
+    with open(cfg_cam_fp, "r") as stream:
+        try:
+            cfg_cam = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+
+    return cfg_cam
+
+
+# 2p
+def load_neural_traces_from_csv(tifname, rootdir='/mnt/minerva/2p-data'):
+    sess = re.findall('\d{8}', tifname)[0]
+    traces_fns = glob.glob(os.path.join(rootdir, str(sess), 'processed', '{}*.csv'.format(tifname)))  # manually extracted
+    d_list=[]
+    for fn in traces_fns:
+        df_ = pd.read_csv(fn)
+        if 'LH' in fn:
+            df_['hemi'] = 'left'
+        else:
+            df_['hemi'] = 'right'
+        d_list.append(df_)
+    traces = pd.concat(d_list, axis=0)
+
+    return traces
+
+
+# File sorting
+def get_videodir_from_tstamp(fn, all_vid_fpaths, verbose=False):
+    '''
+    For a given log file, with YYYYMMDD-HHmmss format, find corresponding video directory for camera.
+    '''
+    behav_tstamp = int(re.match('\d{8}-\d{6}', fn)[0].split('-')[-1])
+
+    cam0_tstamp_matched_ix = np.array([abs(behav_tstamp - int(re.match('\d{8}-\d{6}', os.path.split(vp)[-1])[0].split('-')[-1])) for vp in all_vid_fpaths]).argmin()
+    camdir = all_vid_fpaths[cam0_tstamp_matched_ix]
+    if verbose:
+        print("Found cam0 video paths:")
+        for fi, vp in enumerate(all_vid_fpaths):
+            print(fi, os.path.split(vp)[-1])
+        print("Found corresponding cam vid: {} (log={})".format(os.path.split(camdir)[-1], fn))
+
+    return camdir
+
 
 def extract_fly_condition_from_filename(flyid, fpath):
     '''
@@ -117,7 +169,7 @@ def load_dataframe(fn):
     df_ = butil.load_dataframe(fn, is_odor=False, remove_invalid=False) 
     df_ = process_df_blocks(df_, fps=fps)
 
-    return df_
+    return df_, exp_config
 
 def process_df_blocks(df_, fps=120):
     '''
@@ -131,10 +183,21 @@ def process_df_blocks(df_, fps=120):
     d_list = []
     df_  = ft_skips_to_blocks(df_, acquisition_rate=fps)
     for bnum, currd in df_.groupby('blocknum'):
-        currd = butil.process_df(currd, fps=fps, filter_duration=False)
+        currd = process_df(currd) #, fps=fps, filter_duration=False)
         d_list.append(currd)
     df = pd.concat(d_list, axis=0)
     return df
+
+
+def process_df(df_, xvar='ft_posx', yvar='ft_posy', smooth=False):
+    # add some calculations
+    df_ = butil.calculate_speed(df_, xvar=xvar, yvar=yvar)
+    df_ = butil.calculate_distance(df_, xvar=xvar, yvar=yvar)
+    # smooth?
+    if smooth:
+        df_ = butil.smooth_traces(df_, fs=fs, fc=fc, return_same=True)
+
+    return df_
 
 def ft_skips_to_blocks(df_, acquisition_rate=120, bad_skips=None, use_first_pos=False):
     '''
@@ -149,12 +212,12 @@ def ft_skips_to_blocks(df_, acquisition_rate=120, bad_skips=None, use_first_pos=
     '''
     if bad_skips is None:
         bad_skips = butil.check_ft_skips(df_, acquisition_rate=acquisition_rate, return_skips=True) 
-    if 'rel_time' in bad_skips.keys():
-        print("... WARNING: rel_time has skips, only taking up to 1st time point")
-        i0 = df_.iloc[0].name
-        df = df_.loc[i0:bad_skips['rel_time'][0]]
-        df['blocknum'] = 0
-        return df
+#    if 'rel_time' in bad_skips.keys():
+#        print("... WARNING: rel_time has skips, only taking up to 1st time point")
+#        i0 = df_.iloc[0].name
+#        df = df_.loc[i0:bad_skips['rel_time'][0]]
+#        df['blocknum'] = 0
+#        return df
 
     start_frame = df_.iloc[0].name
     end_frame = df_.iloc[-1].name
@@ -177,7 +240,7 @@ def ft_skips_to_blocks(df_, acquisition_rate=120, bad_skips=None, use_first_pos=
         bad_skip_start_ixs=[]
         if found_zeros.shape[0] != len(zero_pos):
             print("*Warning: N zero points ({}) don't match skips ({}) -- using N zero points.".format(found_zeros.shape[0], len(zero_pos)))
-        zero_pos = found_zeros.index.tolist()
+            zero_pos = found_zeros.index.tolist()
         grouped_by_consec = util.group_consecutives(zero_pos)
         bad_skip_start_ixs = [i[0] for i in grouped_by_consec]
         chunks=[]
@@ -198,6 +261,76 @@ def ft_skips_to_blocks(df_, acquisition_rate=120, bad_skips=None, use_first_pos=
     return df_       
 
 
+def logfiles_to_dataframe(logfiles, flyid, xvar='ft_posx', yvar='ft_posy', default_cond='tap'):
+    '''
+    combine data from logfiles into processed df.
+
+    Args
+    ----
+    logfiles: list of full paths to saved logs
+    flyid: fly3, for ex.
+    
+    '''
+    d_list = []
+    for fn in logfiles: 
+        print(fn)
+        try:
+            #fpath = os.path.join(logdir, '{}.log'.format(fn))
+            curr_cond = extract_fly_condition_from_filename(flyid, fn)
+            if curr_cond in ('', None):
+                curr_cond = default_cond
+            df_, cfg = load_dataframe(fn)
+            df_['condition'] = curr_cond
+            df_['flyid'] = flyid
+            #fly_id = os.path.splitext(os.path.split(fpath)[-1])[0]
+            d_list.append(df_)
+        except Exception as e:
+            print("ERROR: {}".format(fn))
+            traceback.print_exc()
+    df0 = pd.concat(d_list, axis=0)
+
+    return df0
+
+def merge_blocks(df0, fps=120.):
+    '''
+    Takes bad_skips in position when FT restarts to 0, and appends to prev trajectory chunk.
+
+    Args:
+    -----
+    Processed df from logfiles_to_dataframe()
+    
+    Returns:
+    --------
+    df0: pd.DataFrame, with 'blocknum' as column
+
+    '''
+    df_list = []
+    for fn, df in df0.groupby('filename'):
+        #print(fi)
+        if df['blocknum'].nunique()>1:
+            # Get last points of 1st file
+            last_x, last_y, last_t = df[df['blocknum']==0][['ft_posx', 'ft_posy', 'rel_time']].iloc[-1]
+            for bnum, block_ in df[df['blocknum']>0].groupby('blocknum'):
+                #print(bnum, last_x, last_y, last_t)
+                curr_xvs = df[df['blocknum']==bnum]['ft_posx'].values
+                curr_yvs = df[df['blocknum']==bnum]['ft_posy'].values
+                #curr_ts = df[df['blocknum']==bnum]['rel_time'].values
+                # add offsets
+                df.loc[df['blocknum']==bnum, 'ft_posx'] = curr_xvs + last_x
+                df.loc[df['blocknum']==bnum, 'ft_posy'] = curr_yvs + last_y
+                #df.loc[df['blocknum']==bnum, 'rel_time'] = curr_ts + last_t
+                # update last
+                last_x, last_y, last_t = df[df['blocknum']==bnum][['ft_posx', 'ft_posy', 'rel_time']].iloc[-1]
+            # reprocess with updated position info
+            df_p = process_df(df) # fps=fps, filter_duration=False)
+            df_list.append(df_p)
+        else:
+            df_list.append(df)
+    merged = pd.concat(df_list, axis=0)
+    #merged.loc[merged['speed']>100] = None
+
+    return merged
+
 # video processing
 # ----------------------------------------------------
 def find_synced_video_name(fn, vidsrc):
@@ -214,4 +347,8 @@ def find_synced_video_name(fn, vidsrc):
     match_tstamp = found_tstamps[closest_match]
     curr_vid = [v for v in curr_vids if v.startswith(match_tstamp)][0]
     return curr_vid
+
+
+
+
 
