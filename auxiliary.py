@@ -14,6 +14,7 @@ import re
 import glob
 import h5py
 import re
+import traceback
 
 import pandas as pd
 import numpy as np
@@ -233,7 +234,7 @@ def ft_skips_to_blocks(df_, acquisition_rate=120, bad_skips=None, use_first_pos=
         if use_first_pos:
             x0 = round(df_['ft_posx'].iloc[0], 3)
             y0 = round(df_['ft_posy'].iloc[0], 3)
-            df_[(df_['ft_posx'].round(3)==x0) & (df_['ft_posy'].round(3)==y0)]
+            found_zeros = df_[(df_['ft_posx'].round(3)==x0) & (df_['ft_posy'].round(3)==y0)]
         else:
             found_zeros = df_[(df_['ft_posx']==0) & (df_['ft_posy']==0)]
 
@@ -241,15 +242,18 @@ def ft_skips_to_blocks(df_, acquisition_rate=120, bad_skips=None, use_first_pos=
         if found_zeros.shape[0] != len(zero_pos):
             print("*Warning: N zero points ({}) don't match skips ({}) -- using N zero points.".format(found_zeros.shape[0], len(zero_pos)))
             zero_pos = found_zeros.index.tolist()
-        grouped_by_consec = util.group_consecutives(zero_pos)
-        bad_skip_start_ixs = [i[0] for i in grouped_by_consec]
-        chunks=[]
-        for ji, jump_index in enumerate(bad_skip_start_ixs): #bad_skips['ft_posx']):
-            curr_chunk = (start_frame, jump_index)
-            chunks.append(curr_chunk)
-            start_frame = jump_index
-            if ji==len(bad_skip_start_ixs)-1:
-                chunks.append( (jump_index, end_frame+1) )
+        if len(zero_pos)>0:
+            grouped_by_consec = util.group_consecutives(zero_pos)
+            bad_skip_start_ixs = [i[0] for i in grouped_by_consec]
+            chunks=[]
+            for ji, jump_index in enumerate(bad_skip_start_ixs): #bad_skips['ft_posx']):
+                curr_chunk = (start_frame, jump_index)
+                chunks.append(curr_chunk)
+                start_frame = jump_index
+                if ji==len(bad_skip_start_ixs)-1:
+                    chunks.append( (jump_index, end_frame+1) )
+        else:
+            chunks = [ (start_frame, end_frame+1) ]
     else:
         chunks = [ (start_frame, end_frame+1) ]
 
