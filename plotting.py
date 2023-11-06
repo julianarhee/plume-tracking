@@ -476,7 +476,7 @@ def plot_one_flys_trials(df_, instrip_palette={True: 'r', False: 'w'},
 
 
 def plot_array_of_trajectories(trajdf, sorted_eff=[], nr=5, nc=7, 
-                            aspect_ratio=0.5, sharey=True,
+                            aspect_ratio=0.5, sharey=True, main_col='w',
                             bool_colors=['r'], bool_vars=['instrip'], title='filename',
                             notable=[]):
 
@@ -494,7 +494,7 @@ def plot_array_of_trajectories(trajdf, sorted_eff=[], nr=5, nc=7,
         df_ = trajdf[trajdf['filename']==fn].copy()
         #eff_ix = float(mean_tortdf[mean_tortdf['filename']==fn]['efficiency_ix'].unique())
         # PLOT
-        plot_zeroed_trajectory(df_, ax=ax, traj_lw=1.5, odor_lw=1.0,
+        plot_zeroed_trajectory(df_, ax=ax, traj_lw=1.5, odor_lw=1.0, main_col=main_col,
                                      strip_width=50, #params[fn]['strip_width'],
                                      strip_sep=1000, #) #params[fn]['strip_sep'])
                                 bool_colors=bool_colors,
