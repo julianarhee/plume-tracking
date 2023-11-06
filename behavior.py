@@ -891,7 +891,7 @@ def check_entryside_and_flip(df_, strip_width=50, strip_sep=500, odor_dict=None,
                     df_copy.loc[tmpdf.index, heading_var] = vals
 
         else:
-            print("Not flipping borders")
+            #print("Not flipping borders")
             border_flip1, border_flip2 = list(odor_dict.values())[0] #oparams['odor_boundary'][0]
         
         new_borders.update({'c{}'.format(entry_ix): (border_flip1, border_flip2)})
@@ -2870,7 +2870,8 @@ def get_bout_metrics(etdf1, group_vars = ['fly_id', 'filename', 'boutnum', 'cond
     for varn in bool_types:
         if varn in boutdf.columns:
             boutdf[varn] = boutdf[varn].astype(bool)
-    boutdf['epoch_type'] = ['{}-{}'.format(a, b) for (a, b) in boutdf[['bout_type', 'epoch']].values]
+    if 'bout_type' in boutdf.columns:
+        boutdf['epoch_type'] = ['{}-{}'.format(a, b) for (a, b) in boutdf[['bout_type', 'epoch']].values]
 
     #check_cols=[]
     numeric.extend(newvals)
