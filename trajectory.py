@@ -147,10 +147,10 @@ def find_et_bouts(df0, odor_bounds, strip_width=50, strip_sep=1000,
             })
 
         if is_et:
-            print("Is ET:", oi, is_et)
+            #print("Is ET:", oi, is_et)
             et_bouts.update({'c{}'.format(entry_ix): ob})
-        else:
-            print("not et:", oi)
+        #else:
+            #print("not et:", oi)
     
         et_passkey[oi] = curr_pass_key 
 
